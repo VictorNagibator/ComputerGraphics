@@ -5,14 +5,12 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 import numpy as np
 
 
-# Константы настройки
-MIN_SCALE = 0.2  # минимальный масштаб
-MAX_SCALE = 4.0  # максимальный масштаб
-ANIM_RADIUS_EPS = 0.01 # погрешность достижения целевого радиуса
+MIN_SCALE = 0.2 # минимальный масштаб
+MAX_SCALE = 4.0 # максимальный масштаб
 
 # Матрицы преобразований
 def translation_matrix(tx: float, ty: float, tz: float) -> np.ndarray:
-    """Матрица переноса в однородных координатах."""
+    # Матрица переноса в однородных координатах
     M = np.eye(4, dtype=float)
     M[0, 3] = tx
     M[1, 3] = ty
@@ -20,7 +18,7 @@ def translation_matrix(tx: float, ty: float, tz: float) -> np.ndarray:
     return M
 
 def scale_matrix(sx: float, sy: float, sz: float) -> np.ndarray:
-    """Матрица масштабирования по осям."""
+    # Матрица масштабирования по осям
     M = np.eye(4, dtype=float)
     M[0, 0] = sx
     M[1, 1] = sy
@@ -28,14 +26,12 @@ def scale_matrix(sx: float, sy: float, sz: float) -> np.ndarray:
     return M
 
 def rotation_x(theta: float) -> np.ndarray:
-    """
-    Матрица поворота вокруг OX.
-    Формула:
-      [1   0      0    0]
-      [0  cos  -sin    0]
-      [0  sin   cos    0]
-      [0   0     0     1]
-    """
+    # Матрица поворота вокруг OX.
+    # Формула:
+    #  [1   0      0    0]
+    #  [0  cos  -sin    0]
+    #  [0  sin   cos    0]
+    #  [0   0     0     1]
     c, s = math.cos(theta), math.sin(theta)
     M = np.eye(4, dtype=float)
     M[1,1], M[1,2] = c, -s
@@ -43,14 +39,12 @@ def rotation_x(theta: float) -> np.ndarray:
     return M
 
 def rotation_y(theta: float) -> np.ndarray:
-    """
-    Матрица поворота вокруг OY.
-    Формула:
-      [ cos   0   sin  0]
-      [  0    1    0   0]
-      [-sin   0   cos  0]
-      [  0    0    0   1]
-    """
+    # Матрица поворота вокруг OY.
+    # Формула:
+    #  [ cos   0   sin  0]
+    #  [  0    1    0   0]
+    #  [-sin   0   cos  0]
+    #  [  0    0    0   1]
     c, s = math.cos(theta), math.sin(theta)
     M = np.eye(4, dtype=float)
     M[0,0], M[0,2] = c, s
@@ -58,14 +52,12 @@ def rotation_y(theta: float) -> np.ndarray:
     return M
 
 def rotation_z(theta: float) -> np.ndarray:
-    """
-    Матрица поворота вокруг OZ.
-    Формула:
-      [cos -sin  0  0]
-      [sin  cos  0  0]
-      [ 0    0   1  0]
-      [ 0    0   0  1]
-    """
+    # Матрица поворота вокруг OZ.
+    # Формула:
+    #  [cos -sin  0  0]
+    #  [sin  cos  0  0]
+    #  [ 0    0   1  0]
+    #  [ 0    0   0  1]
     c, s = math.cos(theta), math.sin(theta)
     M = np.eye(4, dtype=float)
     M[0,0], M[0,1] = c, -s
@@ -73,25 +65,36 @@ def rotation_z(theta: float) -> np.ndarray:
     return M
 
 # Перспективная проекция
-def perspective_project(points4, d=4.0):
+def perspective_project(points4, c=4.0):
     """
-    Перспектива: камера в (0,0,-d), экран — плоскость z=0.
-    Для точки (x,y,z) коэф. проекции = d / (d + z).
-    - если z увеличивается (точка ближе к камере), коэф. растёт
-    - при d+z -> 0 коэф. стремится к бесконечности
+    Центральная (перспективная) проекция:
+    - камера (центр проецирования) в точке C = (0,0,c)
+    - плоскость проекции — z = 0
+    Тогда для точки (x,y,z):
+        t = c / (c - z)
+        x' = t * x,  y' = t * y
+    В коде:
+    - если (c - z) близко к нулю (точка на линии взгляда камеры или за камерой),
+      точку мы промаркируем как недоступную (возвращаем None для неё).
     """
     pts = np.array(points4, dtype=float)
     projected = []
+    eps = 1e-6
     for p in pts:
         x, y, z, w = p
+        # если w ≈ 0 — редкий случай, делаем w=1
         if abs(w) < 1e-8:
             w = 1.0
-        denom = d + z
 
-        # коэф. перспективы: чем больше положительный z (точка ближе к камере), тем больше масштаб
-        koef = d / denom if denom != 0 else 1e6
+        denom = c - z  # именно так: c - z (lecture)
+        if abs(denom) < eps:
+            # точка находится на плоскости, проходящей через центр проекций — не проецируем нормально
+            projected.append(None)
+            continue
+
+        koef = c / denom
         projected.append((x * koef, y * koef))
-    return np.array(projected)
+    return np.array(projected, dtype=object)
 
 
 # Модель: проволочная буква V
@@ -102,7 +105,7 @@ def make_letter_V(size=1.0, depth=0.2):
     top_right = (w, h/2)
     bottom = (0, -h/2)
 
-    z0, z1 = -depth/2, depth/2
+    z0, z1 = depth/2, -depth/2
     verts = [
         (top_left[0], top_left[1], z0, 1.0),   # 0 передний левый
         (top_right[0], top_right[1], z0, 1.0), # 1 передний правый
@@ -128,7 +131,7 @@ class GLWidget(QtWidgets.QWidget):
         # модель буквы V
         self.model_vertices, self.model_edges = make_letter_V(size=1.0, depth=0.25)
 
-        # состояние трансформации (мировые координаты)
+        # состояние модели (мировые координаты)
         self.tx, self.ty, self.tz = 0.0, 0.0, 0.0
         self.rx, self.ry, self.rz = 0.0, 0.0, 0.0
         self.s = 1.0
@@ -137,7 +140,8 @@ class GLWidget(QtWidgets.QWidget):
         self.last_mouse = None
         self.mouse_mode = None
 
-        # проекция
+        # проекция: фокус = c (камера в (0,0,c))
+        # положительное значение -> камера находится "перед" плоскостью z=0 по направлению OZ
         self.focal = 4.0
 
         # анимация: параметры
@@ -186,7 +190,7 @@ class GLWidget(QtWidgets.QWidget):
         # применяем матрицу модели к вершинам
         M = self.model_matrix()
         verts4 = (M @ self.model_vertices.T).T
-        pts2d = perspective_project(verts4, d=self.focal)
+        pts2d = perspective_project(verts4, c=self.focal)
 
         # масштаб для преобразования логических координат в экранные пиксели
         scale_screen = min(w, h) * 0.5
