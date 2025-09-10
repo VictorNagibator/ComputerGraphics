@@ -66,29 +66,24 @@ def rotation_z(theta: float) -> np.ndarray:
 
 # Перспективная проекция
 def perspective_project(points4, c=4.0):
-    """
-    Центральная (перспективная) проекция:
-    - камера (центр проецирования) в точке C = (0,0,c)
-    - плоскость проекции — z = 0
-    Тогда для точки (x,y,z):
-        t = c / (c - z)
-        x' = t * x,  y' = t * y
-    В коде:
-    - если (c - z) близко к нулю (точка на линии взгляда камеры или за камерой),
-      точку мы промаркируем как недоступную (возвращаем None для неё).
-    """
+    # Центральная (перспективная) проекция:
+    # - камера (центр проецирования) в точке C = (0,0,c)
+    # - плоскость проекции — z = 0
+    # Тогда для точки (x,y,z):
+    #    t = c / (c - z)
+    #    x' = t * x,  y' = t * y
+    # если (c - z) близко к нулю (точка на линии взгляда камеры или за камерой),
+    # точку мы маркируем как недоступную
+
     pts = np.array(points4, dtype=float)
     projected = []
     eps = 1e-6
     for p in pts:
         x, y, z, w = p
-        # если w ≈ 0 — редкий случай, делаем w=1
-        if abs(w) < 1e-8:
-            w = 1.0
 
-        denom = c - z  # именно так: c - z (lecture)
+        denom = c - z 
         if abs(denom) < eps:
-            # точка находится на плоскости, проходящей через центр проекций — не проецируем нормально
+            # точка находится на плоскости, проходящей через центр проекции — не проецируем нормально
             projected.append(None)
             continue
 
@@ -105,13 +100,13 @@ def make_letter_V(size=1.0, depth=0.2):
     top_right = (w, h/2)
     bottom = (0, -h/2)
 
-    z0, z1 = depth/2, -depth/2
+    z0, z1 = depth/2, -depth/2 # передняя и задняя части
     verts = [
-        (top_left[0], top_left[1], z0, 1.0),   # 0 передний левый
-        (top_right[0], top_right[1], z0, 1.0), # 1 передний правый
+        (top_left[0], top_left[1], z0, 1.0),   # 0 передняя левая
+        (top_right[0], top_right[1], z0, 1.0), # 1 передняя правая
         (bottom[0], bottom[1], z0, 1.0),       # 2 передняя нижняя
-        (top_left[0], top_left[1], z1, 1.0),   # 3 задний левый
-        (top_right[0], top_right[1], z1, 1.0), # 4 задний правый
+        (top_left[0], top_left[1], z1, 1.0),   # 3 задняя левая
+        (top_right[0], top_right[1], z1, 1.0), # 4 задняя правая
         (bottom[0], bottom[1], z1, 1.0),       # 5 задняя нижняя
     ]
     edges = [
@@ -242,16 +237,14 @@ class GLWidget(QtWidgets.QWidget):
                 # ЛКМ: поворот вокруг OX и OY
                 self.ry += dx * 0.01
                 self.rx += dy * 0.01
-
         elif self.mouse_mode == "pan":
-            factor = 0.005
             if mods & QtCore.Qt.ShiftModifier:
                 # Shift+ПКМ: движение по Z
-                self.tz += dy * factor
+                self.tz += dy * 0.005
             else:
                 # ПКМ: панорама в XY
-                self.tx += dx * factor
-                self.ty -= dy * factor
+                self.tx += dx * 0.005
+                self.ty -= dy * 0.005
 
         self.last_mouse = pos
         self.update()
@@ -302,14 +295,12 @@ class GLWidget(QtWidgets.QWidget):
             self.start_animation()
 
     def on_anim_tick(self):
-        """
-        Линейное замедление:
-        omega(t) = omega0 * (1 - t/T)  (линейно до 0)
-        theta(t) = integral omega = omega0*(t - t^2/(2T))  (для t <= T)
-        радиус растёт линейно: r(t) = R * (t/T)
-        z(t) = z0 + vz * (t/T)
-        Авто-стоп при t >= T
-        """
+        # Линейное замедление:
+        # omega(t) = omega0 * (1 - t/T)  (линейно до 0)
+        # theta(t) = интеграл omega = omega0*(t - t^2/(2T))  (для t <= T)
+        # радиус растёт линейно: r(t) = R * (t/T)
+        # z(t) = z0 + vz * (t/T) при вращение вдоль OZ (аналогично при OX и OY)
+        # Авто-стоп при t >= T
         if not self.anim_running:
             return
 
@@ -334,35 +325,35 @@ class GLWidget(QtWidgets.QWidget):
             # если анимация закончилась, угол равен интегралу до T: omega0 * T/2
             theta = 0.5 * self.omega0 * T
 
-        # радиус и Z — линейные интерполяции
+        # радиус считаем относительно прошедшего времени
         radius_t = self.radius * progress
 
-        # базовая позиция (мировая) с которой начинается анимация
+        # базовая позиция, с которой начинается анимация
         base = np.array(self._base_pos, dtype=float)
 
         # В зависимости от выбранной оси строим спираль в соответствующей плоскости
         axis = self.anim_axis.upper()
         if axis == 'OZ':
-            # спираль в XY, смещение по мировой Z
+            # спираль в XY, смещение по Z
             x = base[0] + radius_t * math.cos(theta)
             y = base[1] + radius_t * math.sin(theta)
             z = base[2] + self.vz * progress
             # поворот объекта: вращаем вокруг OZ (локальное) на theta
             self.rz = theta
         elif axis == 'OY':
-            # спираль в XZ, смещение по мировой Y
+            # спираль в XZ, смещение по Y
             x = base[0] + radius_t * math.cos(theta)
             z = base[2] + radius_t * math.sin(theta)
             y = base[1] + self.vz * progress
             self.ry = theta
         else:  # 'OX'
-            # спираль в YZ, смещение по мировой X
+            # спираль в YZ, смещение по X
             y = base[1] + radius_t * math.cos(theta)
             z = base[2] + radius_t * math.sin(theta)
             x = base[0] + self.vz * progress
             self.rx = theta
 
-        # обновляем мировые координаты
+        # обновляем координаты
         self.tx, self.ty, self.tz = float(x), float(y), float(z)
 
         # обновляем HUD-значения
@@ -376,6 +367,7 @@ class GLWidget(QtWidgets.QWidget):
 
         self.update()
 
+    # сброс до изначальной позиции
     def reset_transform(self):
         self.tx, self.ty, self.tz = 0.0, 0.0, 0.0
         self.rx, self.ry, self.rz = 0.0, 0.0, 0.0
