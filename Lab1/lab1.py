@@ -11,7 +11,7 @@ MAX_SCALE = 4.0 # максимальный масштаб
 # Матрицы преобразований
 def translation_matrix(tx: float, ty: float, tz: float) -> np.ndarray:
     # Матрица переноса в однородных координатах
-    M = np.eye(4, dtype=float)
+    M = np.eye(4, dtype=float) # создаем матрицу 4x4 с единицами на главной диагонали
     M[0, 3] = tx
     M[1, 3] = ty
     M[2, 3] = tz
@@ -73,7 +73,7 @@ def perspective_project(points4, c=4.0):
     #    t = c / (c - z)
     #    x' = t * x,  y' = t * y
     # если (c - z) близко к нулю (точка на линии взгляда камеры или за камерой),
-    # точку мы маркируем как недоступную
+    # точку мы обозначаем как недоступную
 
     pts = np.array(points4, dtype=float)
     projected = []
@@ -92,7 +92,7 @@ def perspective_project(points4, c=4.0):
     return np.array(projected, dtype=object)
 
 
-# Модель: проволочная буква V
+# проволочная буква V
 def make_letter_V(size=1.0, depth=0.2):
     h = size
     w = size * 0.5
@@ -123,10 +123,10 @@ class GLWidget(QtWidgets.QWidget):
         self.setMinimumSize(800, 600)
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
 
-        # модель буквы V
+        # буква V
         self.model_vertices, self.model_edges = make_letter_V(size=1.0, depth=0.25)
 
-        # состояние модели (мировые координаты)
+        # изначальные координаты модели
         self.tx, self.ty, self.tz = 0.0, 0.0, 0.0
         self.rx, self.ry, self.rz = 0.0, 0.0, 0.0
         self.s = 1.0
@@ -135,38 +135,38 @@ class GLWidget(QtWidgets.QWidget):
         self.last_mouse = None
         self.mouse_mode = None
 
-        # проекция: фокус = c (камера в (0,0,c))
-        # положительное значение -> камера находится "перед" плоскостью z=0 по направлению OZ
+        # проекция: камера в (0,0,c)
+        # положительное значение фокуса -> камера находится перед плоскостью z=0 против направлению OZ
         self.focal = 4.0
 
-        # анимация: параметры
+        # параметры анимации
         self.anim_running = False
         self.anim_start_time = None
-        self.omega0 = 6.0  # начальная угловая скорость (rad/s)
+        self.omega0 = 6.0 # начальная угловая скорость (рад/с)
         self.radius = 0.6 # целевой радиус спирали
         self.vz = -1.2 # итоговое смещение вдоль выбранной оси
         self.anim_axis = 'OZ' # 'OX','OY','OZ'
-        self.anim_duration = 6.0   # длительность анимации
+        self.anim_duration = 6.0 # длительность анимации
 
         self.anim_timer = QtCore.QTimer(self)
         self.anim_timer.timeout.connect(self.on_anim_tick)
         self.anim_timer.start(30)
 
-        # HUD: текущие значения угловой скорости и радиуса (обновляются в on_anim_tick)
+        # текущие значения угловой скорости и радиуса (обновляются в on_anim_tick)
         self.current_angular_velocity = 0.0
         self.current_radius = 0.0
 
         # отрисовка линий
         self.line_pen = QtGui.QPen(QtGui.QColor(40, 40, 180), 2)
 
-        # храним начальную позицию при старте анимации (чтобы анимация была относительной)
+        # храним начальную позицию при старте анимации (чтобы анимация была относительной, а не с начала координат)
         self._base_pos = np.array([self.tx, self.ty, self.tz], dtype=float)
 
     def sizeHint(self):
         return QtCore.QSize(900, 700)
 
     def model_matrix(self):
-        # Комбинация матриц: сначала масштаб (S), затем повороты Rx,Ry,Rz, затем перенос T.
+        # Комбинация матриц: сначала масштаб (S), затем повороты Rx, Ry, Rz, затем перенос T
         # Итог: M = T * Rz * Ry * Rx * S
         T = translation_matrix(self.tx, self.ty, self.tz)
         Rx, Ry, Rz = rotation_x(self.rx), rotation_y(self.ry), rotation_z(self.rz)
@@ -174,7 +174,7 @@ class GLWidget(QtWidgets.QWidget):
         return T @ (Rz @ (Ry @ (Rx @ S))) # умножение матриц в numpy :)
 
     def paintEvent(self, event):
-        # Отрисовка сцены: модель (проволока) и HUD (включая текущую скорость и радиус)
+        # Отрисовка сцены: модель и интерфейс
         qp = QtGui.QPainter(self)
         qp.setRenderHint(QtGui.QPainter.Antialiasing)
         qp.fillRect(self.rect(), QtGui.QColor(245,245,245))
@@ -199,7 +199,7 @@ class GLWidget(QtWidgets.QWidget):
             p1 = screen_pts[i]; p2 = screen_pts[j]
             qp.drawLine(int(p1[0]), int(p1[1]), int(p2[0]), int(p2[1]))
 
-        # HUD: позиция / угол / масштаб / состояние анимации / текущая скорость и радиус
+        # интерфейс: позиция / угол / масштаб / состояние анимации / текущая скорость и радиус
         qp.setPen(QtGui.QPen(QtGui.QColor(10,10,10)))
         qp.setFont(QtGui.QFont("Consolas", 10))
         txt = (f"Позиция=({self.tx:.2f}, {self.ty:.2f}, {self.tz:.2f})    "
@@ -208,7 +208,7 @@ class GLWidget(QtWidgets.QWidget):
         qp.drawText(10, 20, txt)
         anim_state = "Выполняется" if self.anim_running else "Остановлена"
         qp.drawText(10, 40, f"Анимация: {anim_state}    Ось: {self.anim_axis}")
-        # текущие значения (HUD)
+        # текущие значения
         qp.drawText(10, 60, f"Угловая скорость={self.current_angular_velocity:.3f} рад/с    Радиус={self.current_radius:.3f}")
 
     # Ввод мышью
@@ -223,8 +223,9 @@ class GLWidget(QtWidgets.QWidget):
     def mouseMoveEvent(self, ev):
         if self.last_mouse is None:
             return
+        
         pos = ev.pos()
-        dx = pos.x() - self.last_mouse.x()
+        dx = pos.x() - self.last_mouse.x() 
         dy = pos.y() - self.last_mouse.y()
         mods = QtWidgets.QApplication.keyboardModifiers()
 
@@ -242,7 +243,7 @@ class GLWidget(QtWidgets.QWidget):
                 # Shift+ПКМ: движение по Z
                 self.tz += dy * 0.005
             else:
-                # ПКМ: панорама в XY
+                # ПКМ: движение в XY
                 self.tx += dx * 0.005
                 self.ty -= dy * 0.005
 
@@ -273,6 +274,7 @@ class GLWidget(QtWidgets.QWidget):
 
     # Анимация
     def start_animation(self):
+        # относительно какой позиции анимация
         self._base_pos = np.array([self.tx, self.ty, self.tz], dtype=float) 
 
         self.anim_running = True
@@ -307,7 +309,7 @@ class GLWidget(QtWidgets.QWidget):
         t = time.time() - self.anim_start_time
         T = max(self.anim_duration, 1e-6)
 
-        # прогресс 0..1
+        # сколько прошло уже времени
         if t >= T:
             progress = 1.0
             finished = True
@@ -338,7 +340,7 @@ class GLWidget(QtWidgets.QWidget):
             x = base[0] + radius_t * math.cos(theta)
             y = base[1] + radius_t * math.sin(theta)
             z = base[2] + self.vz * progress
-            # поворот объекта: вращаем вокруг OZ (локальное) на theta
+            # вращаем вокруг OZ на theta
             self.rz = theta
         elif axis == 'OY':
             # спираль в XZ, смещение по Y
@@ -356,7 +358,7 @@ class GLWidget(QtWidgets.QWidget):
         # обновляем координаты
         self.tx, self.ty, self.tz = float(x), float(y), float(z)
 
-        # обновляем HUD-значения
+        # обновляем значения
         self.current_angular_velocity = omega_t
         self.current_radius = radius_t
 
