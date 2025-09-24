@@ -404,13 +404,18 @@ class IntervalScanlineEngine(QtCore.QObject):
                         self.frame_z[y_px, px] = z; self.frame_pid[y_px, px] = best_pid
 
     def run_full(self):
+        # prepare: reset and create frame image from widget size (caller responsibility)
         self.reset()
-        old = self.SCANLINE_TIME_LIMIT
-        self.SCANLINE_TIME_LIMIT = 1e9
+        # try to avoid super-long blocking of GUI: process events each CHUNK rows
+        CHUNK = 32
+        last_time = time.time()
         for y in range(self.H):
             self._process_scanline(y, time.time())
+            # emit row completed for incremental update
             self.rowCompleted.emit(y)
-        self.SCANLINE_TIME_LIMIT = old
+            # occasionally yield to GUI so it can process resize/paint/inputs
+            if (y & (CHUNK - 1)) == 0:
+                QtWidgets.QApplication.processEvents()
         self.finished = True
         self.cur_scanline = self.H
         self._log("Finished all scanlines (run_full)")
@@ -472,22 +477,37 @@ class GLWidget(QtWidgets.QWidget):
         # update only that row in frame_image (incremental)
         if self.frame_image is None:
             return
-        w = self.frame_image.width()
-        # map pid -> rgba
-        pid_to_rgba = {}
-        for p in self.scene:
-            c = p['color']
-            pid_to_rgba[p['id']] = QtGui.qRgba(c.red(), c.green(), c.blue(), 255)
-        bg = QtGui.QColor(245,245,245).rgba()
-        row_arr = self.engine.frame_pid[y]
-        for x in range(min(w, row_arr.shape[0])):
-            pid = int(row_arr[x])
-            if pid >= 0:
-                self.frame_image.setPixel(x, y, pid_to_rgba.get(pid, bg))
-            else:
-                self.frame_image.setPixel(x, y, bg)
-        # ask Qt to repaint only that stripe + a small margin for overlay visuals
-        self.update(0, y, self.width(), 2)
+        try:
+            img_w = self.frame_image.width()
+            img_h = self.frame_image.height()
+            if not (0 <= y < img_h):
+                # out of bounds: skip but log for debugging
+                self.on_engine_log(f"rowCompleted: y={y} out of image bounds (h={img_h})")
+                return
+
+            # map pid -> rgba (cacheable, but small cost)
+            pid_to_rgba = {}
+            for p in self.scene:
+                c = p['color']
+                pid_to_rgba[p['id']] = QtGui.qRgba(c.red(), c.green(), c.blue(), 255)
+            bg = QtGui.QColor(245,245,245).rgba()
+
+            row_arr = self.engine.frame_pid[y]
+            max_x = min(img_w, row_arr.shape[0])
+            # write pixels with bounds checks
+            for x in range(max_x):
+                pid = int(row_arr[x])
+                if pid >= 0:
+                    self.frame_image.setPixel(x, y, pid_to_rgba.get(pid, bg))
+                else:
+                    self.frame_image.setPixel(x, y, bg)
+
+            # request repaint of that stripe (small rect)
+            self.update(0, y, max_x, 2)
+        except Exception as ex:
+            # don't crash the app — log and continue
+            self.on_engine_log(f"Exception in on_engine_row_completed(y={y}): {ex}")
+
 
     def on_engine_log(self, s):
         if self.log_widget is not None:
@@ -757,6 +777,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.chk_instant.isChecked():
             # instant full
             self.gl._init_frame_image()
+            QtWidgets.QApplication.processEvents()  # чтобы QImage точно создана и GUI успел
             self.gl.engine.run_full()
             # after run_full, engine.rowCompleted has been emitted for each line and frame_image updated incrementally
             self.gl.update()
