@@ -1,6 +1,9 @@
-# interval_scanline_demo.py
-# Интервальный построчный алгоритм — демонстрация:
-# прямоугольник + протыкающий треугольник.
+# interval_scanline_optimized.py
+# Интервальный построчный алгоритм — оптимизированный вариант:
+# - инкрементальное обновление QImage (только изменённые строки)
+# - минимальная работа при вращении камеры (debounce)
+# - корректное скрытие невидимых рёбер по frame_z
+#
 # Python 3.8+, PyQt5, numpy
 
 import sys, math, time
@@ -9,6 +12,9 @@ import numpy as np
 
 CANVAS_W = 1100
 CANVAS_H = 760
+
+# сколько сегментов резать ребро на проверку видимости (меньше = быстрее, грубее)
+EDGE_SEGMENTS = 10
 
 def look_at_matrix(camera_pos: np.ndarray, target: np.ndarray, up: np.ndarray) -> np.ndarray:
     C = np.array(camera_pos, dtype=float)
@@ -50,7 +56,7 @@ def project_with_camera_and_depth(pts4, camera_pos, target, up, focal):
     return np.array(res, dtype=object), pts_cam
 
 def generate_scene(_=None):
-    # КООРДИНАТЫ НЕ МЕНЯЛ (как просил)
+    # КООРДИНАТЫ НЕ МЕНЯЕМ
     scene = []
     rect_verts = [
         (1.0, 0.5, 1.0, 1.0),
@@ -58,16 +64,13 @@ def generate_scene(_=None):
         (2.5, 2.5, 1.0, 1.0),
         (2.5, 0.5, 1.0, 1.0),
     ]
-    scene.append({'id': 0, 'verts': np.array(rect_verts, dtype=float),
-                  'color': QtGui.QColor(100, 200, 120)})  # зелёный
-
+    scene.append({'id': 0, 'verts': np.array(rect_verts, dtype=float), 'color': QtGui.QColor(100, 200, 120)})
     tri_verts = [
         (1.5, 1.5, 1.5, 1.0),
         (2.5, 2.5, 0.5, 1.0),
         (3.0, 1.0, 0.5, 1.0),
     ]
-    scene.append({'id': 1, 'verts': np.array(tri_verts, dtype=float),
-                  'color': QtGui.QColor(230, 100, 30)})   # оранжево-красный
+    scene.append({'id': 1, 'verts': np.array(tri_verts, dtype=float), 'color': QtGui.QColor(230, 100, 30)})
     return scene
 
 def plane_from_points(p0, p1, p2):
@@ -79,8 +82,10 @@ def plane_from_points(p0, p1, p2):
     return float(a), float(b), float(c), float(d)
 
 class IntervalScanlineEngine(QtCore.QObject):
-    updated = QtCore.pyqtSignal()
+    # сигнал теперь отправляем y (строку) чтобы апдейтать только её
+    rowCompleted = QtCore.pyqtSignal(int)
     logUpdated = QtCore.pyqtSignal(str)
+    updated = QtCore.pyqtSignal()  # обратная совместимость
 
     def __init__(self, scene, focal, width, height, scale_screen, camera_pos, camera_target, camera_up):
         super().__init__()
@@ -107,9 +112,10 @@ class IntervalScanlineEngine(QtCore.QObject):
         self.current_intervals = []
         self.scanline_zbuffer = np.full((self.W,), np.nan, dtype=float)
 
-        # frame buffers (будут ресайзиться в reset)
+        # frame buffers
         self.frame_pid = np.full((self.H, self.W), -1, dtype=int)
-        self.frame_z = np.full((self.H, self.W), 1e18, dtype=float)  # +INF: мы выбираем min(z) как ближе
+        # frame_z: малые значения = ближе (мы будем сравнивать z_edge < frame_z => видно)
+        self.frame_z = np.full((self.H, self.W), 1e18, dtype=float)
 
         self.MIN_PIXEL_WIDTH = 1
         self.MAX_RECURSION_DEPTH = 20
@@ -120,9 +126,10 @@ class IntervalScanlineEngine(QtCore.QObject):
     def _log(self, s):
         self.logUpdated.emit(s)
 
-    def set_camera(self, camera_pos):
+    def set_camera(self, camera_pos, recompute=True):
         self.camera_pos = np.array(camera_pos, dtype=float)
-        self._prepare_projection()
+        if recompute:
+            self._prepare_projection()
 
     def _prepare_projection(self):
         self.projected.clear(); self.cam_coords.clear(); self.poly_planes.clear()
@@ -146,13 +153,12 @@ class IntervalScanlineEngine(QtCore.QObject):
                 self.poly_planes[pid] = None
 
     def reset(self):
-        # при ресете гарантируем правильный размер frame-буферов
         self.cur_scanline = 0
         self.current_intersections = []
         self.current_intervals = []
-        self.scanline_zbuffer = np.full((self.W,), np.nan, dtype=float)
-        self.frame_pid = np.full((self.H, self.W), -1, dtype=int)
-        self.frame_z = np.full((self.H, self.W), 1e18, dtype=float)  # +INF
+        self.scanline_zbuffer.fill(np.nan)
+        self.frame_pid.fill(-1)
+        self.frame_z.fill(1e18)
         self._prepare_projection()
         self.finished = False
         self._log("Engine reset")
@@ -180,6 +186,8 @@ class IntervalScanlineEngine(QtCore.QObject):
             self._process_scanline(self.cur_scanline, start)
         except Exception as e:
             self._log(f"EXCEPTION during scanline {self.cur_scanline}: {e}")
+        # emit only that a row completed (listener will update only that rect)
+        self.rowCompleted.emit(self.cur_scanline)
         self.updated.emit()
         self.cur_scanline += 1
 
@@ -260,16 +268,12 @@ class IntervalScanlineEngine(QtCore.QObject):
                     x_log_px = ((px + 0.5) - self.cx) / self.scale_screen
                     z = self.z_at(pid_single, x_log_px, y_log)
                     if z is not None:
-                        # scanline zbuffer: keep minimum (closest)
-                        if np.isnan(self.scanline_zbuffer[px]):
-                            self.scanline_zbuffer[px] = z
-                        else:
-                            if z < self.scanline_zbuffer[px]:
-                                self.scanline_zbuffer[px] = z
-                        # frame: update if closer (smaller z)
+                        # smaller z = closer => overwrite if closer
                         if z < self.frame_z[y_px, px]:
                             self.frame_z[y_px, px] = z
                             self.frame_pid[y_px, px] = pid_single
+                        # update scanline z-buffer for visualization
+                        self.scanline_zbuffer[px] = z if math.isnan(self.scanline_zbuffer[px]) else min(self.scanline_zbuffer[px], z)
             else:
                 self._resolve_interval_stack(x_left, x_right, set(active_now), y_log, xL_px, xR_px, start_time, y_px)
 
@@ -400,13 +404,13 @@ class IntervalScanlineEngine(QtCore.QObject):
                         self.frame_z[y_px, px] = z; self.frame_pid[y_px, px] = best_pid
 
     def run_full(self):
-        # синхронно обработать все строки (для быстрого полного результата)
         self.reset()
-        old_limit = self.SCANLINE_TIME_LIMIT
+        old = self.SCANLINE_TIME_LIMIT
         self.SCANLINE_TIME_LIMIT = 1e9
         for y in range(self.H):
             self._process_scanline(y, time.time())
-        self.SCANLINE_TIME_LIMIT = old_limit
+            self.rowCompleted.emit(y)
+        self.SCANLINE_TIME_LIMIT = old
         self.finished = True
         self.cur_scanline = self.H
         self._log("Finished all scanlines (run_full)")
@@ -425,6 +429,7 @@ class GLWidget(QtWidgets.QWidget):
         self.scale_screen = min(self.width(), self.height()) * 0.5
 
         self.engine = IntervalScanlineEngine(self.scene, self.focal, self.width(), self.height(), self.scale_screen, self.camera_pos, self.camera_target, self.camera_up)
+        self.engine.rowCompleted.connect(self.on_engine_row_completed)
         self.engine.logUpdated.connect(self.on_engine_log)
         self.engine.updated.connect(self.update)
 
@@ -439,12 +444,17 @@ class GLWidget(QtWidgets.QWidget):
         self.last_mouse = None
         self.mouse_mode = None
 
+        # debounce timer for camera finalize (heavy operations)
+        self._camera_update_timer = QtCore.QTimer(self)
+        self._camera_update_timer.setSingleShot(True)
+        self._camera_update_timer.timeout.connect(self._on_camera_update_timeout)
+        self._camera_needs_reset = False
+
+        # incremental frame image (QImage). Создаётся/пересоздаётся при reset()
+        self.frame_image = None
+
     def set_log_widget(self, widget):
         self.log_widget = widget; widget.clear()
-
-    def on_engine_log(self, s):
-        if self.log_widget is not None:
-            self.log_widget.append(s)
 
     def _recalc_camera_spherical(self):
         v = self.camera_pos - self.camera_target
@@ -454,13 +464,41 @@ class GLWidget(QtWidgets.QWidget):
         self.cam_el = math.asin(v[1] / r)
         self.cam_az = math.atan2(v[2], v[0])
 
+    def on_engine_log(self, s):
+        if self.log_widget is not None:
+            self.log_widget.append(s)
+
+    def on_engine_row_completed(self, y):
+        # update only that row in frame_image (incremental)
+        if self.frame_image is None:
+            return
+        w = self.frame_image.width()
+        # map pid -> rgba
+        pid_to_rgba = {}
+        for p in self.scene:
+            c = p['color']
+            pid_to_rgba[p['id']] = QtGui.qRgba(c.red(), c.green(), c.blue(), 255)
+        bg = QtGui.QColor(245,245,245).rgba()
+        row_arr = self.engine.frame_pid[y]
+        for x in range(min(w, row_arr.shape[0])):
+            pid = int(row_arr[x])
+            if pid >= 0:
+                self.frame_image.setPixel(x, y, pid_to_rgba.get(pid, bg))
+            else:
+                self.frame_image.setPixel(x, y, bg)
+        # ask Qt to repaint only that stripe + a small margin for overlay visuals
+        self.update(0, y, self.width(), 2)
+
+    def on_engine_log(self, s):
+        if self.log_widget is not None:
+            self.log_widget.append(s)
+
     def paintEvent(self, event):
         qp = QtGui.QPainter(self)
         qp.setRenderHint(QtGui.QPainter.Antialiasing)
         qp.fillRect(self.rect(), QtGui.QColor(245,245,245))
         w,h = self.width(), self.height()
         self.scale_screen = min(w,h) * 0.5
-        # обновляем размеры движка (важно для frame buffers)
         self.engine.W = w; self.engine.H = h; self.engine.cx = w/2.0; self.engine.cy = h/2.0
         self.engine.scale_screen = self.scale_screen
         cx, cy = w/2.0, h/2.0
@@ -479,32 +517,59 @@ class GLWidget(QtWidgets.QWidget):
                     poly2d.append((sx, sy))
             final_polys_2d.append((p['id'], poly2d, p['color']))
 
-        # Draw progressive composed image from current frame buffer (even if not finished)
-        img = QtGui.QImage(w, h, QtGui.QImage.Format_ARGB32)
-        bg = QtGui.QColor(245,245,245).rgba()
-        img.fill(bg)
-        pid_to_rgba = {}
-        for p in self.scene:
-            c = p['color']
-            pid_to_rgba[p['id']] = QtGui.qRgba(c.red(), c.green(), c.blue(), 255)
-        arr_pid = self.engine.frame_pid
-        Hf, Wf = arr_pid.shape
-        for y in range(min(h, Hf)):
-            row = arr_pid[y]
-            for x in range(min(w, Wf)):
-                pid = int(row[x])
-                if pid >= 0:
-                    img.setPixel(x, y, pid_to_rgba.get(pid, bg))
-        qp.drawImage(0, 0, img)
+        # draw composited image if exists
+        if self.frame_image is not None:
+            qp.drawImage(0, 0, self.frame_image)
 
-        # draw polygon outlines on top
+        # draw outlines but hide occluded parts using engine.frame_z (sample segments)
         qp.setPen(self.poly_pen)
         for pid, poly2d, color in final_polys_2d:
             n = len(poly2d)
             for i in range(n):
                 p1 = poly2d[i]; p2 = poly2d[(i+1)%n]
                 if p1 is None or p2 is None: continue
-                qp.drawLine(QtCore.QPointF(p1[0], p1[1]), QtCore.QPointF(p2[0], p2[1]))
+                x1, y1 = p1; x2, y2 = p2
+                # sample endpoints quickly; if both outside image, still may be visible in middle
+                # break edge into segments and draw visible segments
+                segs = EDGE_SEGMENTS
+                prev_vis = False
+                seg_start = None
+                for s in range(segs):
+                    t0 = s / segs; t1 = (s + 1) / segs
+                    cx_seg = x1*(1-(t0+t1)/2.0) + x2*((t0+t1)/2.0)
+                    cy_seg = y1*(1-(t0+t1)/2.0) + y2*((t0+t1)/2.0)
+                    ix = int(round(cx_seg)); iy = int(round(cy_seg))
+                    visible = False
+                    if 0 <= ix < self.engine.W and 0 <= iy < self.engine.H:
+                        # reconstruct logical coords
+                        x_log = (ix + 0.5 - self.engine.cx) / self.engine.scale_screen
+                        y_log = (self.engine.cy - (iy + 0.5)) / self.engine.scale_screen
+                        z_edge = self.engine.z_at(pid, x_log, y_log)
+                        if z_edge is not None:
+                            # visible if this edge is at least as close as recorded frame_z
+                            if z_edge <= self.engine.frame_z[iy, ix] + 1e-9:
+                                visible = True
+                    if visible:
+                        if seg_start is None:
+                            seg_start = (t0, t1)
+                            prev_vis = True
+                        else:
+                            prev_vis = True
+                    else:
+                        if seg_start is not None:
+                            # draw combined segment from last seg_start to previous segment
+                            ta = seg_start[0]; tb = t0
+                            xa = x1*(1-ta) + x2*ta; ya = y1*(1-ta) + y2*ta
+                            xb = x1*(1-tb) + x2*tb; yb = y1*(1-tb) + y2*tb
+                            qp.drawLine(QtCore.QPointF(xa, ya), QtCore.QPointF(xb, yb))
+                            seg_start = None
+                            prev_vis = False
+                # if last segments were visible
+                if seg_start is not None:
+                    ta = seg_start[0]; tb = 1.0
+                    xa = x1*(1-ta) + x2*ta; ya = y1*(1-ta) + y2*ta
+                    xb = x1*(1-tb) + x2*tb; yb = y1*(1-tb) + y2*tb
+                    qp.drawLine(QtCore.QPointF(xa, ya), QtCore.QPointF(xb, yb))
 
         # draw axes
         axis_len = 1.2
@@ -521,7 +586,7 @@ class GLWidget(QtWidgets.QWidget):
             sx2, sy2 = cx + p1[0]*self.scale_screen, cy - p1[1]*self.scale_screen
             qp.setPen(pen); qp.drawLine(int(sx1), int(sy1), int(sx2), int(sy2))
 
-        # show current scanline and intersections/intervals overlay
+        # scanline overlay (small)
         y_scan = self.engine.cur_scanline
         if 0 <= y_scan < h:
             qp.setPen(QtGui.QPen(QtGui.QColor(200,20,20), 1, QtCore.Qt.DashLine))
@@ -549,7 +614,6 @@ class GLWidget(QtWidgets.QWidget):
                 qp.setBrush(brush); qp.setPen(QtGui.QPen(QtGui.QColor(80,80,80), 0))
                 qp.drawRect(rectL, y_scan-6, wseg, 12)
 
-        # status
         qp.setPen(QtGui.QPen(QtGui.QColor(10,10,10)))
         qp.setFont(QtGui.QFont("Consolas", 11))
         run_state = "Выполняется" if self.engine.running else "Остановлен"
@@ -581,33 +645,41 @@ class GLWidget(QtWidgets.QWidget):
             y = r * math.sin(el)
             z = r * math.cos(el) * math.sin(az)
             self.camera_pos = np.array([x, y, z], dtype=float) + self.camera_target
-            # обновляем проекции в движке
-            self.engine.set_camera(self.camera_pos)
+            # fast update: recompute not required for engine; we just need outlines to follow
+            self.engine.set_camera(self.camera_pos, recompute=False)
             self._recalc_camera_spherical()
-            # важное: сбрасываем текущие цвета/буферы при вращении
-            # (пользователь просил: при вращении — видимый результат очищается)
-            self.engine.pause()
-            self.engine.reset()
+            # mark that after mouse stops we must reset engine/frame
+            self._camera_needs_reset = True
+            # debounce heavy reset until mouse movement stops
+            self._camera_update_timer.start(80)  # tweak ms for responsiveness vs CPU load
+            # show outlines immediately
             self.update()
         self.last_mouse = pos
+
+    def _on_camera_update_timeout(self):
+        # finalize camera move: recompute projections and reset engine/frame
+        self.engine.set_camera(self.camera_pos, recompute=True)
+        if self._camera_needs_reset:
+            self.engine.reset()
+            # rebuild frame_image blank (it will be filled progressively)
+            self._init_frame_image()
+            self._camera_needs_reset = False
+        self.update()
 
     def mouseReleaseEvent(self, ev):
         self.mouse_mode = None
         self.last_mouse = None
+        if self._camera_update_timer.isActive():
+            self._camera_update_timer.stop()
+        self._on_camera_update_timeout()
 
     def keyPressEvent(self, ev):
         k = ev.key()
         if k == QtCore.Qt.Key_R:
             self.reset_camera()
         elif k == QtCore.Qt.Key_Space:
-            # Toggle run: если был остановлен — ресет и стартуем анимированно; иначе — пауза
-            if self.engine.running:
-                self.engine.pause()
-            else:
-                self.engine.reset()
-                self.engine.start()
+            pass
         elif k == QtCore.Qt.Key_S:
-            # один шаг
             if not self.engine.running:
                 self.engine.on_tick()
         self.update()
@@ -617,29 +689,43 @@ class GLWidget(QtWidgets.QWidget):
         self._recalc_camera_spherical()
         self.engine.set_camera(self.camera_pos)
         self.engine.reset()
+        self._init_frame_image()
         self.update()
+
+    def _init_frame_image(self):
+        w, h = self.width(), self.height()
+        img = QtGui.QImage(w, h, QtGui.QImage.Format_ARGB32)
+        bg = QtGui.QColor(245,245,245).rgba()
+        img.fill(bg)
+        self.frame_image = img
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Лабораторная — Интервальный построчный алгоритм (демо)")
+        self.setWindowTitle("Лабораторная — Интервальный построчный алгоритм (оптимизированный)")
         self.gl = GLWidget()
         self.setCentralWidget(self.gl)
         self.create_controls()
         self.resize(1300, 780)
+        # init frame image
+        self.gl._init_frame_image()
 
     def create_controls(self):
         panel = QtWidgets.QWidget(); layout = QtWidgets.QVBoxLayout(panel)
         layout.addWidget(QtWidgets.QLabel("<b>Управление алгоритмом</b>"))
-        btn_start = QtWidgets.QPushButton("Старт/Пауза (Space)")
-        btn_start.clicked.connect(lambda: self.gl.keyPressEvent(QtGui.QKeyEvent(QtCore.QEvent.KeyPress, QtCore.Qt.Key_Space, QtCore.Qt.NoModifier)))
+        self.chk_instant = QtWidgets.QCheckBox("Instant (полный, без анимации)")
+        self.chk_instant.setChecked(False)
+        layout.addWidget(self.chk_instant)
+
+        btn_start = QtWidgets.QPushButton("Старт/Пауза")
+        btn_start.clicked.connect(self.on_start_pause)
         btn_step = QtWidgets.QPushButton("Шаг — 1 строка (S)")
         btn_step.clicked.connect(lambda: self.gl.engine.on_tick())
         btn_reset = QtWidgets.QPushButton("Сброс (R)")
         btn_reset.clicked.connect(lambda: (self.gl.reset_camera(), self.gl.update()))
         layout.addWidget(btn_start); layout.addWidget(btn_step); layout.addWidget(btn_reset)
 
-        layout.addWidget(QtWidgets.QLabel("Скорость (мс на шаг)"))
+        layout.addWidget(QtWidgets.QLabel("Скорость (мс на шаг для Progressive)"))
         speed = QtWidgets.QSlider(QtCore.Qt.Horizontal); speed.setRange(1,200); speed.setValue(self.gl.engine.speed)
         speed.valueChanged.connect(lambda v: setattr(self.gl.engine, "speed", v))
         layout.addWidget(speed)
@@ -655,11 +741,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.gl.engine.logUpdated.connect(lambda s: self.log_view.append(s))
 
         instr = QtWidgets.QLabel(
-            "- ЛКМ + перетаскивание: вращение камеры (орбита вокруг цели) — при вращении текущие цвета стираются\n"
-            "- Space: старт/пауза анимированного построчного прохода\n"
+            "- ЛКМ + перетаскивание: вращение камеры (debounce, heavy-recalc запустится только после отпускания)\n"
+            "- Instant: полный быстрый проход (run_full)\n"
+            "- Progressive: анимированный построчный проход (Start запускает таймер)\n"
             "- S: выполнить 1 строку вручную\n"
             "- R: сброс камеры и движка\n"
-            "Видимый composited-image рисуется по мере заполнения framebuffer'а — можно видеть процесс построчно."
         )
         instr.setWordWrap(True)
         layout.addWidget(instr)
@@ -667,10 +753,27 @@ class MainWindow(QtWidgets.QMainWindow):
         dock = QtWidgets.QDockWidget("Панель управления", self)
         panel.setLayout(layout); dock.setWidget(panel); self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
 
+    def on_start_pause(self):
+        if self.chk_instant.isChecked():
+            # instant full
+            self.gl._init_frame_image()
+            self.gl.engine.run_full()
+            # after run_full, engine.rowCompleted has been emitted for each line and frame_image updated incrementally
+            self.gl.update()
+        else:
+            if self.gl.engine.running:
+                self.gl.engine.pause()
+            else:
+                self.gl._init_frame_image()
+                self.gl.engine.reset()
+                self.gl.engine.start()
+            self.gl.update()
+
     def on_regen(self):
         self.gl.scene = generate_scene()
         self.gl.engine.scene = self.gl.scene
         self.gl.engine.reset()
+        self.gl._init_frame_image()
         self.gl.update()
 
 def main():
