@@ -108,7 +108,7 @@ def project_with_camera(points4, camera_pos, target, up, focal):
     # 1) мировые -> камера: умножаем на look_at_matrix
     # 2) В координатах камеры используем простую перспективную проекцию на плоскость z = focal_cam:
     #    для точки в (x_cam, y_cam, z_cam):
-    #      если z_cam <= 0: точка за камерой или на ней -> пропускаем (None)
+    #      если z_cam <= 0: точка за камерой или на ней -> пропускаем
     #      коэффициент t = focal / z_cam
     #      экранные логические x' = t * x_cam, y' = t * y_cam
     #
@@ -590,7 +590,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cam_y.valueChanged.connect(cam_changed)
         self.cam_z.valueChanged.connect(cam_changed)
 
-        # Синхронизируем при изменении камеры из самого виджета (орбита)
+        # Синхронизируем при изменении камеры
         def on_camera_changed(x, y, z):
             self.cam_x.blockSignals(True); self.cam_y.blockSignals(True); self.cam_z.blockSignals(True)
             self.cam_x.setValue(x); self.cam_y.setValue(y); self.cam_z.setValue(z)
