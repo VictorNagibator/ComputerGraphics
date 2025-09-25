@@ -173,6 +173,9 @@ class IntervalScanline(QtCore.QObject):
         # флаг завершения полной отрисовки
         self.finished = False
 
+        # флаг паузы: если алгоритм приостановлен (сканирующая строка и интервалы должны остаться видимыми)
+        self.paused = False
+
     # пересчитать проекции и параметры плоскостей при изменении камеры или сцены
     def _prepare_projection(self):
         # очищаем старые данные
@@ -223,6 +226,7 @@ class IntervalScanline(QtCore.QObject):
         self._prepare_projection()
         # сбрасываем флаг завершения
         self.finished = False
+        self.paused = False
         # сигнал об обновлении состояния (для перерисовки виджета)
         self.updated.emit()
 
@@ -237,8 +241,11 @@ class IntervalScanline(QtCore.QObject):
 
     # пауза прогрессивного режима
     def pause(self):
+        # при паузе останавливаем таймер, но НЕ очищаем состояние интервалов/строки:
         if self.running:
             self.running = False
+            # пометим, что алгоритм приостановлен — paintEvent будет рисовать сканирующую строку и интервалы
+            self.paused = True
             self.timer.stop()
 
     # обработка одного шага таймера: обрабатываем текущую строку
@@ -739,7 +746,9 @@ class GLWidget(QtWidgets.QWidget):
 
         # индикация текущей сканирующей строки и интервалов (для прогрессивного режима)
         y_scan = self.algorithm.cur_scanline
-        if 0 <= y_scan < h and self.algorithm.running:
+        # рисуем сканирующую строку и интервалы если алгоритм выполняется
+        # либо если он приостановлен и ещё не завершён полностью
+        if 0 <= y_scan < h and (self.algorithm.running or (self.algorithm.paused and not self.algorithm.finished)):
             qp.setPen(QtGui.QPen(QtGui.QColor(200,20,20), 1, QtCore.Qt.DashLine))
             qp.drawLine(0, y_scan, w, y_scan)
             qp.setPen(QtGui.QPen(QtGui.QColor(10,10,10), 1))
@@ -902,8 +911,15 @@ class GLWidget(QtWidgets.QWidget):
         if self.algorithm.finished:
             self.reset_algorithm()
         self.show_axes = False
-        self.algorithm.run_full()
-        self.update()
+        self.setUpdatesEnabled(False)
+        try:
+            # синхронно рассчитываем весь кадр
+            self.algorithm.run_full()
+        finally:
+            # включаем обновления и выполняем одну финальную перерисовку,
+            # чтобы сразу показать итоговый результат
+            self.setUpdatesEnabled(True)
+            self.update()
 
 # Главное окно приложения
 class MainWindow(QtWidgets.QMainWindow):
