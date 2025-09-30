@@ -16,9 +16,9 @@ layout(location = 1) in vec3 aNormal;       // нормаль вершины
 
 uniform mat4 uMVP;                          // матрица модель-вид-проекция
 uniform vec3 uLightPosWorld;                // позиция света в мировых координатах
-uniform float uKa;                          // коэффициент окружающего освещения
-uniform float uKd;                          // коэффициент диффузного освещения  
-uniform float uIa;                          // интенсивность окружающего освещения
+uniform float uKa;                          // коэффициент фонового освещения
+uniform float uKd;                          // коэффициент расстояния-освещения  
+uniform float uIa;                          // интенсивность фонового освещения
 uniform float uIl;                          // интенсивность источника света
 
 out float vIntensity;                       // выходная интенсивность освещения
@@ -28,7 +28,7 @@ void main() {
     vec3 N = normalize(aNormal);             // нормализуем нормаль
     vec3 L = normalize(uLightPosWorld - posWorld.xyz); // направление к свету
     
-    float diff = max(0.0, dot(N, L));       // диффузная составляющая
+    float diff = max(0.0, dot(N, L));       // составляющая от расстояния
     float I = uIa * uKa + uIl * uKd * diff; // общая интенсивность
     vIntensity = clamp(I, 0.0, 1.0);        // ограничиваем диапазон
     
@@ -44,7 +44,7 @@ out vec4 FragColor;                         // выходной цвет
 
 void main() {
     float v = clamp(vIntensity, 0.0, 1.0);  // ограничиваем интенсивность
-    FragColor = vec4(v, v, v, 1.0);         // grayscale цвет
+    FragColor = vec4(v, v, v, 1.0);         // цвет в серой палитре
 }
 """
 
@@ -1102,7 +1102,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ka_spin.valueChanged.connect(self.on_light_params_changed)
         params_h.addWidget(self.ka_spin, 0, 1)
         
-        params_h.addWidget(QtWidgets.QLabel('Kd (диффузия)'), 1, 0)
+        params_h.addWidget(QtWidgets.QLabel('Kd (коэффициент расстояния-освещения)'), 1, 0)
         self.kd_spin = QtWidgets.QDoubleSpinBox()
         self.kd_spin.setRange(0.0, 2.0)
         self.kd_spin.setSingleStep(0.05)
@@ -1130,7 +1130,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Кнопка движения камеры
         move_h = QtWidgets.QHBoxLayout()
-        self.btn_move = QtWidgets.QPushButton('Движение: исходная точка -> противоположная')
+        self.btn_move = QtWidgets.QPushButton('Движение: исходная точка -> противоположная свету')
         self.btn_move.clicked.connect(self.on_start_move)
         move_h.addWidget(self.btn_move)
         layout.addLayout(move_h)
