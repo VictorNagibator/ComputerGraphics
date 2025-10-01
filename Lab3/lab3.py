@@ -7,17 +7,17 @@ from PyQt5.QtWidgets import QOpenGLWidget
 from OpenGL import GL
 from OpenGL.GL import shaders
 
-# GLSL шейдеры для модели освещения Гуро
+# шейдеры для модели освещения Гуро
 # Вершинный шейдер вычисляет освещение для каждой вершины
 VERT_SHADER = """
 #version 330 core
 layout(location = 0) in vec3 aPos;          // позиция вершины
 layout(location = 1) in vec3 aNormal;       // нормаль вершины
 
-uniform mat4 uMVP;                          // матрица модель-вид-проекция
+uniform mat4 uMVP;                          // матрица модель-камера-проекция
 uniform vec3 uLightPosWorld;                // позиция света в мировых координатах
 uniform float uKa;                          // коэффициент фонового освещения
-uniform float uKd;                          // коэффициент расстояния-освещения  
+uniform float uKd;                          // коэффициент диффузного отражения  
 uniform float uIa;                          // интенсивность фонового освещения
 uniform float uIl;                          // интенсивность источника света
 
@@ -65,7 +65,7 @@ AXIS_FRAG = """
 #version 330 core
 in vec3 vColor;
 out vec4 FragColor;
-void main(){ 
+void main() { 
     FragColor = vec4(vColor,1.0); 
 }
 """
@@ -1102,7 +1102,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ka_spin.valueChanged.connect(self.on_light_params_changed)
         params_h.addWidget(self.ka_spin, 0, 1)
         
-        params_h.addWidget(QtWidgets.QLabel('Kd (коэффициент расстояния-освещения)'), 1, 0)
+        params_h.addWidget(QtWidgets.QLabel('Kd (коэффициент диффузного отражения)'), 1, 0)
         self.kd_spin = QtWidgets.QDoubleSpinBox()
         self.kd_spin.setRange(0.0, 2.0)
         self.kd_spin.setSingleStep(0.05)
