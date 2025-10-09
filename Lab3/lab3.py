@@ -11,40 +11,40 @@ from OpenGL.GL import shaders
 # Вершинный шейдер вычисляет освещение для каждой вершины
 VERT_SHADER = """
 #version 330 core
-layout(location = 0) in vec3 aPos;          // позиция вершины
-layout(location = 1) in vec3 aNormal;       // нормаль вершины
+layout(location = 0) in vec3 aPos; // позиция вершины
+layout(location = 1) in vec3 aNormal; // нормаль вершины
 
-uniform mat4 uMVP;                          // матрица модель-камера-проекция
-uniform vec3 uLightPosWorld;                // позиция света в мировых координатах
-uniform float uKa;                          // коэффициент фонового освещения
-uniform float uKd;                          // коэффициент диффузного отражения  
-uniform float uIa;                          // интенсивность фонового освещения
-uniform float uIl;                          // интенсивность источника света
+uniform mat4 uMVP; // матрица модель-камера-проекция
+uniform vec3 uLightPosWorld; // позиция света в мировых координатах
+uniform float uKa; // коэффициент фонового освещения
+uniform float uKd; // коэффициент диффузного отражения  
+uniform float uIa; // интенсивность фонового освещения
+uniform float uIl; // интенсивность источника света
 
-out float vIntensity;                       // выходная интенсивность освещения
+out float vIntensity; // выходная интенсивность освещения
 
 void main() {
-    vec4 posWorld = vec4(aPos, 1.0);        // позиция в мировых координатах
-    vec3 N = normalize(aNormal);             // нормализуем нормаль
+    vec4 posWorld = vec4(aPos, 1.0); // позиция в мировых координатах
+    vec3 N = normalize(aNormal); // нормализуем нормаль
     vec3 L = normalize(uLightPosWorld - posWorld.xyz); // направление к свету
     
-    float diff = max(0.0, dot(N, L));       // составляющая от расстояния
+    float diff = max(0.0, dot(N, L)); // составляющая от расстояния
     float I = uIa * uKa + uIl * uKd * diff; // общая интенсивность
-    vIntensity = clamp(I, 0.0, 1.0);        // ограничиваем диапазон
+    vIntensity = clamp(I, 0.0, 1.0); // ограничиваем диапазон
     
-    gl_Position = uMVP * vec4(aPos, 1.0);   // преобразуем позицию
+    gl_Position = uMVP * vec4(aPos, 1.0); // преобразуем позицию
 }
 """
 
 # Фрагментный шейдер - просто использует вычисленную интенсивность
 FRAG_SHADER = """
 #version 330 core
-in float vIntensity;                        // интенсивность из вершинного шейдера
-out vec4 FragColor;                         // выходной цвет
+in float vIntensity; // интенсивность из вершинного шейдера
+out vec4 FragColor; // выходной цвет
 
 void main() {
-    float v = clamp(vIntensity, 0.0, 1.0);  // ограничиваем интенсивность
-    FragColor = vec4(v, v, v, 1.0);         // цвет в серой палитре
+    float v = clamp(vIntensity, 0.0, 1.0); // ограничиваем интенсивность
+    FragColor = vec4(v, v, v, 1.0); // цвет в серой палитре
 }
 """
 
@@ -55,7 +55,8 @@ layout(location=0) in vec3 aPos;
 uniform mat4 uMVP;
 uniform vec3 uColor;
 out vec3 vColor;
-void main(){ 
+
+void main() { 
     vColor = uColor; 
     gl_Position = uMVP * vec4(aPos,1.0); 
 }
@@ -65,12 +66,13 @@ AXIS_FRAG = """
 #version 330 core
 in vec3 vColor;
 out vec4 FragColor;
+
 void main() { 
     FragColor = vec4(vColor,1.0); 
 }
 """
 
-# Создает матрицу перспективной проекции
+# Создает матрицу перспективной проекции (сделал, как в OpenGL через функцию glm::perspective)
 def perspective(fovy, aspect, znear, zfar):
     f = 1.0 / math.tan(fovy / 2.0)
     M = np.zeros((4,4), dtype=np.float32)
@@ -113,11 +115,11 @@ def make_sphere(radius=1.0, lat_segments=20, lon_segments=36):
     
     # Генерируем вершины
     for i in range(lat_segments + 1):
-        phi = math.pi * i / lat_segments  # угол от 0 до π
+        phi = math.pi * i / lat_segments  # угол от 0 до pi
         y = radius * math.cos(phi) # координата Y
         r = radius * math.sin(phi) # радиус на этой широте
         for j in range(lon_segments):
-            theta = 2.0 * math.pi * j / lon_segments  # угол от 0 до 2π
+            theta = 2.0 * math.pi * j / lon_segments  # угол от 0 до 2pi
             x = r * math.cos(theta) # координата X
             z = r * math.sin(theta) # координата Z
             positions.append((x,y,z))
@@ -335,7 +337,7 @@ class GLWidget(QOpenGLWidget):
         self.light_world = np.array([2.5,3.0,2.5], dtype=np.float32)
         self.light_on = True
         self.Ka = 0.35 # коэффициент фонового света
-        self.Kd = 1.0 # коэффициент diffuse  
+        self.Kd = 1.0 # коэффициент диффузии
         self.Ia = 0.25 # интенсивность фонового света
         self.Il = 1.2 # интенсивность источника
 
@@ -391,11 +393,11 @@ class GLWidget(QOpenGLWidget):
             frag2 = shaders.compileShader(AXIS_FRAG, GL.GL_FRAGMENT_SHADER)
             self.axis_program = shaders.compileProgram(vert2, frag2)
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Shader error", str(e))
+            QtWidgets.QMessageBox.critical(self, "Ошибка шейдеров", str(e))
             self.program = None
             return
 
-        # Проверяем поддержку VAO
+        # Проверяем поддержку VAO (на ноутбуке работает, на компе странно всё как-то :) )
         try:
             vao_test = GL.glGenVertexArrays(1)
             try: 
@@ -404,7 +406,6 @@ class GLWidget(QOpenGLWidget):
                 pass
             self.use_vao = True
         except Exception:
-            print("VAO not available, fallback.")
             self.use_vao = False
 
         # Создаем геометрию
@@ -530,36 +531,23 @@ class GLWidget(QOpenGLWidget):
         GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.ebo)
         GL.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, idx.nbytes, idx, GL.GL_STATIC_DRAW)
 
-        # Создаем VAO если поддерживается
-        if self.use_vao:
-            try:
-                self.vao = GL.glGenVertexArrays(1)
-                GL.glBindVertexArray(self.vao)
+        self.vao = GL.glGenVertexArrays(1)
+        GL.glBindVertexArray(self.vao)
                 
-                # Привязываем буферы
-                GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vbo)
-                GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.ebo)
+        # Привязываем буферы
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vbo)
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.ebo)
                 
-                # Настраиваем атрибуты вершин
-                # Атрибут 0: позиции (3 float)
-                GL.glEnableVertexAttribArray(0)
-                GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, 6*4, GL.ctypes.c_void_p(0))
+        # Настраиваем атрибуты вершин
+        # Атрибут 0: позиции (3 float)
+        GL.glEnableVertexAttribArray(0)
+        GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, 6*4, GL.ctypes.c_void_p(0))
                 
-                # Атрибут 1: нормали (3 float, смещение 3*4 байт)
-                GL.glEnableVertexAttribArray(1)
-                GL.glVertexAttribPointer(1, 3, GL.GL_FLOAT, GL.GL_FALSE, 6*4, GL.ctypes.c_void_p(3*4))
+        # Атрибут 1: нормали (3 float, смещение 3*4 байт)
+        GL.glEnableVertexAttribArray(1)
+        GL.glVertexAttribPointer(1, 3, GL.GL_FLOAT, GL.GL_FALSE, 6*4, GL.ctypes.c_void_p(3*4))
                 
-                GL.glBindVertexArray(0)  # отвязываем VAO
-            except Exception as e:
-                print("VAO creation failed, disabling VAO:", e)
-                self.use_vao = False
-                try: 
-                    GL.glDeleteVertexArrays(1, [self.vao])
-                except Exception: 
-                    pass
-                self.vao = None
-        else:
-            self.vao = None
+        GL.glBindVertexArray(0)  # отвязываем VAO
 
         # Создаем VBO для отображения нормалей (линии)
         self._build_normals_lines(pos, normals)
@@ -594,19 +582,16 @@ class GLWidget(QOpenGLWidget):
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.normals_vbo)
         GL.glBufferData(GL.GL_ARRAY_BUFFER, arr.nbytes, arr, GL.GL_STATIC_DRAW)
         
-        if self.use_vao:
-            self.normals_vao = GL.glGenVertexArrays(1)
-            GL.glBindVertexArray(self.normals_vao)
-            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.normals_vbo)
-            GL.glEnableVertexAttribArray(0)
-            GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, 0, GL.ctypes.c_void_p(0))
-            GL.glBindVertexArray(0)
-        else:
-            self.normals_vao = None
+        self.normals_vao = GL.glGenVertexArrays(1)
+        GL.glBindVertexArray(self.normals_vao)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.normals_vbo)
+        GL.glEnableVertexAttribArray(0)
+        GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, 0, GL.ctypes.c_void_p(0))
+        GL.glBindVertexArray(0)
             
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
 
-    # Создает оси координат"""
+    # Создает оси координат
     def create_axes(self):
         # Вершины для осей: X, Y, Z
         axes = np.array([
@@ -720,7 +705,7 @@ class GLWidget(QOpenGLWidget):
             GL.glDrawElements(GL.GL_TRIANGLES, self.index_count, GL.GL_UNSIGNED_INT, None)
             GL.glBindVertexArray(0)
         else:
-            # Fallback без VAO
+            # без VAO
             GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vbo)
             GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.ebo)
             GL.glEnableVertexAttribArray(0)
@@ -743,7 +728,7 @@ class GLWidget(QOpenGLWidget):
             
         GL.glUseProgram(0)
 
-        # Каркасная модель поверх
+        # Триангуляция поверх
         if self.show_wireframe:
             GL.glUseProgram(self.axis_program)
             loc = GL.glGetUniformLocation(self.axis_program, 'uMVP')
@@ -777,7 +762,7 @@ class GLWidget(QOpenGLWidget):
             loc = GL.glGetUniformLocation(self.axis_program, 'uMVP')
             GL.glUniformMatrix4fv(loc, 1, GL.GL_FALSE, mvp.T)
             locc = GL.glGetUniformLocation(self.axis_program, 'uColor')
-            GL.glUniform3f(locc, 0.0, 0.45, 0.8)  # синий цвет
+            GL.glUniform3f(locc, 0.0, 0.45, 0.8) # синий цвет
             
             if self.use_vao and self.normals_vao is not None:
                 GL.glBindVertexArray(self.normals_vao)
@@ -943,7 +928,7 @@ class GLWidget(QOpenGLWidget):
             elapsed = now - self.cam_move_start
             t = min(1.0, elapsed / float(self.cam_move_dur))
             
-            # Плавная интерполяция с ease-in-out
+            # Плавная интерполяция
             smooth_t = self._ease_in_out(t)
             
             # Интерполируем параметры камеры
@@ -1149,7 +1134,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addLayout(sp_h)
 
         # Инструкция
-        instr = QtWidgets.QLabel('вращение вокруг цели: ЛКМ + перетаскивание')
+        instr = QtWidgets.QLabel('Вращение вокруг модели: ЛКМ + перетаскивание')
         instr.setWordWrap(True)
         layout.addWidget(instr)
 
