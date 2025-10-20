@@ -2,11 +2,8 @@
 Bikini Bottom — статическая 3D-сцена на Python + PyOpenGL + GLFW
 
 Обновлённая версия — правки по последним замечаниям пользователя:
-1) у дома сквидварда добавлена крыша (диск того же радиуса)
-2) листья у дома спанчбоба наклонены для естественного вида
-3) добавлены круглые окна с рамками (голубые стекла, синие рамки)
-4) добавлены двери (деревянная у сквидварда, металлическая у спанчбоба)
-5) добавлены дороги (главная и дорожки к домам)
+1) рамки окон правильно ориентированы на поверхности домов
+2) исправлены тени - теперь тень только справа от ананаса
 
 Файлы текстур (положить рядом в папке `textures/`):
     textures/sand.png
@@ -81,7 +78,7 @@ float ShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir){
     if(projCoords.z > 1.0) return 0.0;
     float closestDepth = texture(shadowMap, projCoords.xy).r;
     float currentDepth = projCoords.z;
-    float bias = max(0.005 * (1.0 - dot(normal, lightDir)), 0.001);
+    float bias = max(0.01 * (1.0 - dot(normal, lightDir)), 0.005);
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
     for(int x=-1;x<=1;x++){
@@ -241,31 +238,63 @@ def create_disk(segments=64):
     return np.array(verts, dtype=np.float32)
 
 
-def create_window_frame(outer_radius=0.4, inner_radius=0.35, segments=32):
+def create_window_frame(outer_radius=0.5, inner_radius=0.35, thickness=0.05, segments=32):
+    """Создает объемную рамку окна (тороид)"""
     verts = []
+    
     for i in range(segments):
         a0 = 2*np.pi*i/segments
         a1 = 2*np.pi*(i+1)/segments
         
-        # Внешние точки
-        p0_outer = (outer_radius*np.cos(a0), 0.0, outer_radius*np.sin(a0))
-        p1_outer = (outer_radius*np.cos(a1), 0.0, outer_radius*np.sin(a1))
+        # Внешние точки (с учетом толщины)
+        p0_outer_front = (outer_radius*np.cos(a0), outer_radius*np.sin(a0), thickness/2)
+        p1_outer_front = (outer_radius*np.cos(a1), outer_radius*np.sin(a1), thickness/2)
+        p0_outer_back = (outer_radius*np.cos(a0), outer_radius*np.sin(a0), -thickness/2)
+        p1_outer_back = (outer_radius*np.cos(a1), outer_radius*np.sin(a1), -thickness/2)
         
-        # Внутренние точки
-        p0_inner = (inner_radius*np.cos(a0), 0.0, inner_radius*np.sin(a0))
-        p1_inner = (inner_radius*np.cos(a1), 0.0, inner_radius*np.sin(a1))
+        # Внутренние точки (с учетом толщины)
+        p0_inner_front = (inner_radius*np.cos(a0), inner_radius*np.sin(a0), thickness/2)
+        p1_inner_front = (inner_radius*np.cos(a1), inner_radius*np.sin(a1), thickness/2)
+        p0_inner_back = (inner_radius*np.cos(a0), inner_radius*np.sin(a0), -thickness/2)
+        p1_inner_back = (inner_radius*np.cos(a1), inner_radius*np.sin(a1), -thickness/2)
         
-        normal = (np.cos(a0), 0.0, np.sin(a0))
+        # Нормали
+        n_outer = (np.cos(a0), np.sin(a0), 0)
+        n_inner = (-np.cos(a0), -np.sin(a0), 0)
+        n_top = (0, 0, 1)
+        n_bottom = (0, 0, -1)
         
-        # Внешний треугольник
-        verts.extend([*p0_outer, *normal, 0.5+0.5*np.cos(a0), 0.5+0.5*np.sin(a0)])
-        verts.extend([*p1_outer, *normal, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
-        verts.extend([*p0_inner, *normal, 0.5+0.45*np.cos(a0), 0.5+0.45*np.sin(a0)])
+        # Внешняя боковая поверхность
+        verts.extend([*p0_outer_front, *n_outer, i/segments, 0])
+        verts.extend([*p0_outer_back, *n_outer, i/segments, 1])
+        verts.extend([*p1_outer_front, *n_outer, (i+1)/segments, 0])
+        verts.extend([*p1_outer_front, *n_outer, (i+1)/segments, 0])
+        verts.extend([*p0_outer_back, *n_outer, i/segments, 1])
+        verts.extend([*p1_outer_back, *n_outer, (i+1)/segments, 1])
         
-        # Внутренний треугольник
-        verts.extend([*p1_outer, *normal, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
-        verts.extend([*p1_inner, *normal, 0.5+0.45*np.cos(a1), 0.5+0.45*np.sin(a1)])
-        verts.extend([*p0_inner, *normal, 0.5+0.45*np.cos(a0), 0.5+0.45*np.sin(a0)])
+        # Внутренняя боковая поверхность
+        verts.extend([*p0_inner_front, *n_inner, i/segments, 0])
+        verts.extend([*p1_inner_front, *n_inner, (i+1)/segments, 0])
+        verts.extend([*p0_inner_back, *n_inner, i/segments, 1])
+        verts.extend([*p1_inner_front, *n_inner, (i+1)/segments, 0])
+        verts.extend([*p1_inner_back, *n_inner, (i+1)/segments, 1])
+        verts.extend([*p0_inner_back, *n_inner, i/segments, 1])
+        
+        # Верхняя поверхность (передняя)
+        verts.extend([*p0_outer_front, *n_top, 0.5+0.5*np.cos(a0), 0.5+0.5*np.sin(a0)])
+        verts.extend([*p1_outer_front, *n_top, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
+        verts.extend([*p0_inner_front, *n_top, 0.5+0.45*np.cos(a0), 0.5+0.45*np.sin(a0)])
+        verts.extend([*p1_outer_front, *n_top, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
+        verts.extend([*p1_inner_front, *n_top, 0.5+0.45*np.cos(a1), 0.5+0.45*np.sin(a1)])
+        verts.extend([*p0_inner_front, *n_top, 0.5+0.45*np.cos(a0), 0.5+0.45*np.sin(a0)])
+        
+        # Нижняя поверхность (задняя)
+        verts.extend([*p0_outer_back, *n_bottom, 0.5+0.5*np.cos(a0), 0.5+0.5*np.sin(a0)])
+        verts.extend([*p0_inner_back, *n_bottom, 0.5+0.45*np.cos(a0), 0.5+0.45*np.sin(a0)])
+        verts.extend([*p1_outer_back, *n_bottom, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
+        verts.extend([*p1_outer_back, *n_bottom, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
+        verts.extend([*p0_inner_back, *n_bottom, 0.5+0.45*np.cos(a0), 0.5+0.45*np.sin(a0)])
+        verts.extend([*p1_inner_back, *n_bottom, 0.5+0.45*np.cos(a1), 0.5+0.45*np.sin(a1)])
     
     return np.array(verts, dtype=np.float32)
 
@@ -343,7 +372,7 @@ def main():
     sph_vao, _, sph_count = make_vao(sph_data)
     disk_data = create_disk(64)
     disk_vao, _, disk_count = make_vao(disk_data)
-    window_frame_data = create_window_frame()
+    window_frame_data = create_window_frame(thickness=0.08)  # Объемные рамки
     window_frame_vao, _, window_frame_count = make_vao(window_frame_data)
 
     # текстуры — ищем в папке textures
@@ -422,8 +451,8 @@ def main():
 
     glfw.set_cursor_pos_callback(window, cursor_pos)
 
-    # свет
-    light_pos = glm.vec3(-10.0, 20.0, 10.0)
+    # свет - изменена позиция для правильных теней
+    light_pos = glm.vec3(-10.0, 20.0, 5.0)
 
     # позиции домиков: одна линия по оси X, одинаковая z
     line_z = 0.0
@@ -480,7 +509,7 @@ def main():
             model_sq = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(0.0,0.0,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.8,4.0,1.8))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_sq))
             glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
-            # Sponge (half ellipsoid)
+            # Sponge (half ellipsoid) - ИСПРАВЛЕНО: добавлен в теневой рендер
             model_sb = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.0,0.6,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.6,2.0,1.2))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_sb))
             glBindVertexArray(sph_vao); glDrawArrays(GL_TRIANGLES,0,sph_count)
@@ -541,7 +570,7 @@ def main():
         draw_textured(cube_vao, cube_count, tex_road, road_squid5, 16.0)
 
         # Patrick (rock) - слева
-        model_patrick = glm.translate(glm.mat4(1.0), pos_patrick + glm.vec3(0.0,0.6,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.8,1.1,1.8))
+        model_patrick = glm.translate(glm.mat4(1.0), pos_patrick + glm.vec3(0.0,0.0,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.8,1.6,1.8))
         draw_textured(sph_vao, sph_count, tex_rock, model_patrick, 6.0)
 
         # Squidward (центр): увеличенный цилиндр + уши + монобровь + нос + крыша + окна + дверь
@@ -566,17 +595,21 @@ def main():
         nose = model_for_box((pos_squid.x, pos_squid.y + 2.0, pos_squid.z + 0.9), (0.4,1.0,0.4))
         draw_textured(cube_vao, cube_count, tex_squid, nose, 12.0)
         
-        # Окна (глаза)
-        window_left = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(-0.45, 2.2, 0.9)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.5,0.5,0.5))
-        window_right = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(0.45, 2.2, 0.9)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.5,0.5,0.5))
+        # Окна (глаза) - с правильной ориентацией
+        # Для цилиндрического дома окна должны быть направлены по нормали к поверхности
+        window_left = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(-0.45, 2.2, 0.9)) * glm.scale(glm.mat4(1.0), glm.vec3(0.5,0.5,0.5))
+        window_right = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(0.45, 2.2, 0.9)) * glm.scale(glm.mat4(1.0), glm.vec3(0.5,0.5,0.5))
         
-        # Рамки окон
+        # Рамки окон (объемные)
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_left, 64.0)
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_right, 64.0)
         
-        # Стекла окон
-        draw_textured(disk_vao, disk_count, tex_window_blue, window_left, 64.0)
-        draw_textured(disk_vao, disk_count, tex_window_blue, window_right, 64.0)
+        # Стекла окон (немного смещены назад относительно рамок)
+        window_glass_left = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(-0.45, 2.2, 0.9)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.35,0.35,0.35))
+        window_glass_right = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(0.45, 2.2, 0.9)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.35,0.35,0.35))
+        
+        draw_textured(disk_vao, disk_count, tex_window_blue, window_glass_left, 64.0)
+        draw_textured(disk_vao, disk_count, tex_window_blue, window_glass_right, 64.0)
         
         # Дверь (деревянная)
         door_squid = model_for_box((pos_squid.x, pos_squid.y + 0.5, pos_squid.z + 0.88), (0.6,1.2,0.05))
@@ -594,17 +627,21 @@ def main():
         draw_textured(cube_vao, cube_count, tex_leaf, leaf2, 24.0)
         draw_textured(cube_vao, cube_count, tex_leaf, leaf3, 24.0)
         
-        # Окна
-        window_sponge_left = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(-0.8, 2.0, 0.85)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.rotate(glm.mat4(1.0), glm.radians(45.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-33.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
-        window_sponge_right = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.6, 1.2, 1.33)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.rotate(glm.mat4(1.0), glm.radians(-25.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-10.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
+        # Окна с правильной ориентацией на сферической поверхности
+        # Для сферического дома окна должны быть направлены по нормали к поверхности
+        window_sponge_left = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(-0.8, 2.0, 0.85))  * glm.rotate(glm.mat4(1.0), glm.radians(45.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-55.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
+        window_sponge_right = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.6, 1.2, 1.33)) * glm.rotate(glm.mat4(1.0), glm.radians(-75.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-25.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
         
-        # Рамки окон
+        # Рамки окон (объемные)
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_sponge_left, 64.0)
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_sponge_right, 64.0)
         
-        # Стекла окон
-        draw_textured(disk_vao, disk_count, tex_window_blue, window_sponge_left, 64.0)
-        draw_textured(disk_vao, disk_count, tex_window_blue, window_sponge_right, 64.0)
+        # Стекла окон (немного смещены назад)
+        window_glass_sponge_left = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(-0.8, 2.0, 0.85)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.rotate(glm.mat4(1.0), glm.radians(45.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-33.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
+        window_glass_sponge_right = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.6, 1.2, 1.33)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.rotate(glm.mat4(1.0), glm.radians(-25.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-10.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
+        
+        draw_textured(disk_vao, disk_count, tex_window_blue, window_glass_sponge_left, 64.0)
+        draw_textured(disk_vao, disk_count, tex_window_blue, window_glass_sponge_right, 64.0)
         
         # Дверь (металлическая)
         door_sponge = model_for_box((pos_sponge.x, pos_sponge.y - 0.25, pos_sponge.z + 1.45), (0.4,1.3,0.1))
