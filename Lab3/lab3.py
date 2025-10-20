@@ -174,7 +174,7 @@ def make_ellipsoid(rx=1.4, ry=0.8, rz=1.0, lat_segments=18, lon_segments=32):
     return np.array(pos,dtype=np.float32), np.array(idx,dtype=np.uint32)
 
 # Генерируем тор
-def make_torus_double_sided(R=1.0, r=0.35, seg_major=36, seg_minor=18):
+def make_torus(R=1.0, r=0.35, seg_major=36, seg_minor=18):
     pos = []
     norms = []
     idx = []
@@ -452,7 +452,7 @@ class GLWidget(QOpenGLWidget):
                 normals[i] = n
                 
         elif self.shape == 'torus':
-            pos, normals, idx = make_torus_double_sided(R=1.0, r=0.4, 
+            pos, normals, idx = make_torus(R=1.0, r=0.4, 
                                                       seg_major=self.lon_segments, 
                                                       seg_minor=max(8,self.lat_segments//2))
             
@@ -1222,7 +1222,7 @@ class MainWindow(QtWidgets.QMainWindow):
         eye = self.gl._sph_to_cart(self.gl.cam_az, self.gl.cam_el, self.gl.cam_radius) + self.gl.camera_target
         self.camera_label.setText(f'x: {eye[0]:.2f}, y: {eye[1]:.2f}, z: {eye[2]:.2f}')
         
-        # Синхронизируем состояния переключателей
+        # Синхронизируем состояния переключателей UI
         if self.tri_check.isChecked() != self.gl.show_wireframe:
             self.tri_check.setChecked(self.gl.show_wireframe)
         if self.norm_check.isChecked() != self.gl.show_normals:
