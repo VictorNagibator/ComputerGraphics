@@ -773,13 +773,13 @@ def main():
         
         # Окна с правильной ориентацией на сферической поверхности
         # Для сферического дома окна должны быть направлены по нормали к поверхности
-        window_sponge_left = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(-0.8, 2.0, 0.75))  * glm.rotate(glm.mat4(1.0), glm.radians(45.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-45.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
+        window_sponge_left = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(-0.8, 2.0, 0.75))  * glm.rotate(glm.mat4(1.0), glm.radians(45.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-50.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
         window_sponge_right = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.7, 1.3, 1.15)) * glm.rotate(glm.mat4(1.0), glm.radians(-65.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-33.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
         
         # Рамки окон (объемные)
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_sponge_left, 64.0)
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_sponge_right, 64.0)
-        
+        w
         # Стекла окон (немного смещены назад)
         window_glass_sponge_left = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(-0.8, 2.0, 0.75)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.rotate(glm.mat4(1.0), glm.radians(45.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-33.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
         window_glass_sponge_right = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.7, 1.3, 1.15)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.rotate(glm.mat4(1.0), glm.radians(-30.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-10.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
