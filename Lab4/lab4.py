@@ -4,10 +4,14 @@ Bikini Bottom — статическая 3D-сцена на Python + PyOpenGL + 
 Обновлённая версия — правки по последним замечаниям пользователя:
 1) небо заменено на простой голубой цвет
 2) добавлены большие цветочки с прозрачностью в небе (15 штук)
+3) цветочки используют разные текстуры
 
 Файлы текстур (положить рядом в папке `textures/`):
     textures/sand.png
-    textures/flower.png  # <-- НОВАЯ ТЕКСТУРА ЦВЕТКА
+    textures/green_flower.png  # <-- разные цветочки
+    textures/pink_flower.png
+    textures/blue_flower.png  
+    textures/yellow_flower.png
     textures/pineapple.png
     textures/rock.png
     textures/squidward.png
@@ -496,14 +500,22 @@ def main():
     door_frame_data = create_door_frame()
     door_frame_vao, _, door_frame_count = make_vao(door_frame_data)
     
-    # Меш для цветков - УВЕЛИЧЕН РАЗМЕР В 3 РАЗА (с 2.0 до 6.0)
+    # Меш для цветков
     flower_data = create_flower_quad(6.0)
     flower_vao, _, flower_count = make_vao(flower_data)
 
     # текстуры — ищем в папке textures
     texdir = os.path.join(os.path.dirname(__file__), 'textures')
     tex_sand = load_texture(os.path.join(texdir, 'sand.png'))
-    tex_flower = load_texture(os.path.join(texdir, 'flower.png'))  # Текстура цветка
+    
+    # Загружаем разные текстуры цветков
+    tex_flowers = [
+        load_texture(os.path.join(texdir, 'green_flower.png')), 
+        load_texture(os.path.join(texdir, 'pink_flower.png')),
+        load_texture(os.path.join(texdir, 'blue_flower.png')),
+        load_texture(os.path.join(texdir, 'yellow_flower.png'))
+    ]
+    
     tex_pine = load_texture(os.path.join(texdir, 'pineapple.png'))
     tex_rock = load_texture(os.path.join(texdir, 'rock.png'))
     tex_squid = load_texture(os.path.join(texdir, 'squidward.png'))
@@ -587,13 +599,14 @@ def main():
     pos_squid = glm.vec3(0.0, 0.0, line_z)
     pos_sponge = glm.vec3(8.0, 0.0, line_z)
     
-    # Позиции для цветков в небе (случайные) - УВЕЛИЧЕНО КОЛИЧЕСТВО ДО 15
+    # Позиции для цветков в небе (случайные) - теперь храним также тип цветка
     flower_positions = []
-    for _ in range(15):  # 15 цветков вместо 8
+    for _ in range(20):
         x = random.uniform(-35, 35)
-        y = random.uniform(15, 40)  # Немного увеличил высоту для больших цветков
+        y = random.uniform(25, 40)
         z = random.uniform(-35, 35)
-        flower_positions.append(glm.vec3(x, y, z))
+        flower_type = random.randint(0, len(tex_flowers) - 1)  # случайный тип цветка
+        flower_positions.append((glm.vec3(x, y, z), flower_type))
 
     # вспомогательная функция - обработка управления WASD/Space/Ctrl
     def process_movement(delta):
@@ -800,13 +813,14 @@ def main():
         glUniformMatrix4fv(glGetUniformLocation(flower_prog, 'view'), 1, GL_FALSE, glm.value_ptr(view))
         glUniformMatrix4fv(glGetUniformLocation(flower_prog, 'projection'), 1, GL_FALSE, glm.value_ptr(proj))
         
-        glActiveTexture(GL_TEXTURE0)
-        glBindTexture(GL_TEXTURE_2D, tex_flower)
-        glUniform1i(glGetUniformLocation(flower_prog, 'texture_diffuse1'), 0)
-        
         glBindVertexArray(flower_vao)
         
-        for pos in flower_positions:
+        for pos, flower_type in flower_positions:
+            # Привязываем текстуру в зависимости от типа цветка
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, tex_flowers[flower_type])
+            glUniform1i(glGetUniformLocation(flower_prog, 'texture_diffuse1'), 0)
+            
             # Создаем билборд - цветок всегда повернут к камере
             model = glm.translate(glm.mat4(1.0), pos)
             
