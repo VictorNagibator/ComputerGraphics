@@ -2,13 +2,12 @@
 Bikini Bottom — статическая 3D-сцена на Python + PyOpenGL + GLFW
 
 Обновлённая версия — правки по последним замечаниям пользователя:
-1) небо разделено: сверху sky.png, по бокам background.png
-2) рамка двери Спанчбоба повторяет форму полуэллипса
+1) небо заменено на простой голубой цвет
+2) добавлены большие цветочки с прозрачностью в небе (15 штук)
 
 Файлы текстур (положить рядом в папке `textures/`):
     textures/sand.png
-    textures/sky.png
-    textures/background.png
+    textures/flower.png  # <-- НОВАЯ ТЕКСТУРА ЦВЕТКА
     textures/pineapple.png
     textures/rock.png
     textures/squidward.png
@@ -32,8 +31,9 @@ import ctypes
 from pyglm import glm
 import os
 import sys
+import random
 
-# ---------- Шейдеры (GLSL)
+# ---------- Шейдеры (GLSL) - ДОБАВЛЕН ШЕЙДЕР ДЛЯ ЦВЕТКОВ С ПРОЗРАЧНОСТЬЮ
 VERT_SHADER = """#version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
@@ -107,6 +107,37 @@ void main(){
     float shadow = ShadowCalculation(FragPosLightSpace, normal, lightDir);
     vec3 lighting = ambient + (1.0 - shadow) * (diffuse + specular);
     FragColor = vec4(lighting, 1.0);
+}
+"""
+
+# Простой шейдер для цветков с прозрачностью
+FLOWER_VERT_SHADER = """#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 2) in vec2 aTex;
+
+out vec2 TexCoord;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+
+void main(){
+    TexCoord = aTex;
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+}
+"""
+
+FLOWER_FRAG_SHADER = """#version 330 core
+in vec2 TexCoord;
+out vec4 FragColor;
+
+uniform sampler2D texture_diffuse1;
+
+void main(){
+    vec4 texColor = texture(texture_diffuse1, TexCoord);
+    if(texColor.a < 0.1)
+        discard;
+    FragColor = texColor;
 }
 """
 
@@ -300,62 +331,6 @@ def create_window_frame(outer_radius=0.5, inner_radius=0.35, thickness=0.05, seg
     return np.array(verts, dtype=np.float32)
 
 
-def create_skybox_sides():
-    """Создает боковые стороны неба (4 стены)"""
-    verts = []
-    size = 100.0
-    
-    # Передняя грань
-    verts.extend([-size, -size,  size,  0,0,-1,  0,0])
-    verts.extend([ size, -size,  size,  0,0,-1,  1,0])
-    verts.extend([ size,  size,  size,  0,0,-1,  1,1])
-    verts.extend([ size,  size,  size,  0,0,-1,  1,1])
-    verts.extend([-size,  size,  size,  0,0,-1,  0,1])
-    verts.extend([-size, -size,  size,  0,0,-1,  0,0])
-    
-    # Задняя грань
-    verts.extend([-size, -size, -size,  0,0,1,  1,0])
-    verts.extend([ size,  size, -size,  0,0,1,  0,1])
-    verts.extend([ size, -size, -size,  0,0,1,  0,0])
-    verts.extend([ size,  size, -size,  0,0,1,  0,1])
-    verts.extend([-size, -size, -size,  0,0,1,  1,0])
-    verts.extend([-size,  size, -size,  0,0,1,  1,1])
-    
-    # Левая грань
-    verts.extend([-size,  size,  size,  1,0,0,  1,0])
-    verts.extend([-size,  size, -size,  1,0,0,  1,1])
-    verts.extend([-size, -size, -size,  1,0,0,  0,1])
-    verts.extend([-size, -size, -size,  1,0,0,  0,1])
-    verts.extend([-size, -size,  size,  1,0,0,  0,0])
-    verts.extend([-size,  size,  size,  1,0,0,  1,0])
-    
-    # Правая грань
-    verts.extend([ size,  size,  size, -1,0,0,  0,0])
-    verts.extend([ size, -size, -size, -1,0,0,  1,1])
-    verts.extend([ size,  size, -size, -1,0,0,  1,0])
-    verts.extend([ size, -size, -size, -1,0,0,  1,1])
-    verts.extend([ size,  size,  size, -1,0,0,  0,0])
-    verts.extend([ size, -size,  size, -1,0,0,  0,1])
-    
-    return np.array(verts, dtype=np.float32)
-
-
-def create_skybox_top():
-    """Создает верхнюю часть неба"""
-    verts = []
-    size = 100.0
-    
-    # Верхняя грань
-    verts.extend([-size,  size, -size,  0,-1,0,  0,1])
-    verts.extend([ size,  size,  size,  0,-1,0,  1,0])
-    verts.extend([ size,  size, -size,  0,-1,0,  1,1])
-    verts.extend([ size,  size,  size,  0,-1,0,  1,0])
-    verts.extend([-size,  size, -size,  0,-1,0,  0,1])
-    verts.extend([-size,  size,  size,  0,-1,0,  0,0])
-    
-    return np.array(verts, dtype=np.float32)
-
-
 def create_door_frame(width=0.4, height=1.3, thickness=0.05, segments=16):
     """Создает изогнутую рамку для двери в форме полуэллипса"""
     verts = []
@@ -417,6 +392,27 @@ def create_door_frame(width=0.4, height=1.3, thickness=0.05, segments=16):
         verts.extend([x1_inner, y1_inner, thickness/2, *n1, (i+1)/segments, 0])
         verts.extend([x1_inner, y1_inner, -thickness/2, *n1, (i+1)/segments, 1])
         verts.extend([x0_inner, y0_inner, -thickness/2, *n0, i/segments, 1])
+    
+    return np.array(verts, dtype=np.float32)
+
+
+def create_flower_quad(size=1.0):
+    """Создает квадрат для цветка (билборд)"""
+    verts = []
+    s = size / 2.0
+    # Квадрат, ориентированный по оси Y
+    coords = [
+        (-s, -s, 0.0), (s, s, 0.0), (s, -s, 0.0),
+        (s, s, 0.0), (-s, -s, 0.0), (-s, s, 0.0)
+    ]
+    tex_coords = [
+        (0.0, 0.0), (1.0, 1.0), (1.0, 0.0),
+        (1.0, 1.0), (0.0, 0.0), (0.0, 1.0)
+    ]
+    normal = (0.0, 0.0, 1.0)
+    
+    for i in range(6):
+        verts.extend([*coords[i], *normal, *tex_coords[i]])
     
     return np.array(verts, dtype=np.float32)
 
@@ -482,6 +478,7 @@ def main():
 
     prog = link_program(VERT_SHADER, FRAG_SHADER)
     depth_prog = link_program(DEPTH_VS, DEPTH_FS)
+    flower_prog = link_program(FLOWER_VERT_SHADER, FLOWER_FRAG_SHADER)  # Шейдер для цветков
 
     # создать меши
     plane_data = create_plane(40.0, uv_scale=30.0)
@@ -496,18 +493,17 @@ def main():
     disk_vao, _, disk_count = make_vao(disk_data)
     window_frame_data = create_window_frame(thickness=0.08)
     window_frame_vao, _, window_frame_count = make_vao(window_frame_data)
-    skybox_sides_data = create_skybox_sides()
-    skybox_sides_vao, _, skybox_sides_count = make_vao(skybox_sides_data)
-    skybox_top_data = create_skybox_top()
-    skybox_top_vao, _, skybox_top_count = make_vao(skybox_top_data)
     door_frame_data = create_door_frame()
     door_frame_vao, _, door_frame_count = make_vao(door_frame_data)
+    
+    # Меш для цветков - УВЕЛИЧЕН РАЗМЕР В 3 РАЗА (с 2.0 до 6.0)
+    flower_data = create_flower_quad(6.0)
+    flower_vao, _, flower_count = make_vao(flower_data)
 
     # текстуры — ищем в папке textures
     texdir = os.path.join(os.path.dirname(__file__), 'textures')
     tex_sand = load_texture(os.path.join(texdir, 'sand.png'))
-    tex_sky = load_texture(os.path.join(texdir, 'sky.png'))
-    tex_background = load_texture(os.path.join(texdir, 'background.png'))
+    tex_flower = load_texture(os.path.join(texdir, 'flower.png'))  # Текстура цветка
     tex_pine = load_texture(os.path.join(texdir, 'pineapple.png'))
     tex_rock = load_texture(os.path.join(texdir, 'rock.png'))
     tex_squid = load_texture(os.path.join(texdir, 'squidward.png'))
@@ -549,6 +545,8 @@ def main():
     glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
     glEnable(GL_DEPTH_TEST)
+    glEnable(GL_BLEND)  # Включаем смешивание для прозрачности
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
     # камера - теперь FPS-подобная
     yaw, pitch = -90.0, 0.0
@@ -588,6 +586,14 @@ def main():
     pos_patrick = glm.vec3(-8.0, 0.0, line_z)
     pos_squid = glm.vec3(0.0, 0.0, line_z)
     pos_sponge = glm.vec3(8.0, 0.0, line_z)
+    
+    # Позиции для цветков в небе (случайные) - УВЕЛИЧЕНО КОЛИЧЕСТВО ДО 15
+    flower_positions = []
+    for _ in range(15):  # 15 цветков вместо 8
+        x = random.uniform(-35, 35)
+        y = random.uniform(15, 40)  # Немного увеличил высоту для больших цветков
+        z = random.uniform(-35, 35)
+        flower_positions.append(glm.vec3(x, y, z))
 
     # вспомогательная функция - обработка управления WASD/Space/Ctrl
     def process_movement(delta):
@@ -648,6 +654,7 @@ def main():
 
         # 2) основной рендер
         glViewport(0,0,w,h)
+        # Изменен цвет фона на простой голубой (небо)
         glClearColor(0.6,0.85,0.92,1.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glUseProgram(prog)
@@ -669,13 +676,6 @@ def main():
             glUniform1f(glGetUniformLocation(prog,'materialShininess'), shininess)
             glUniformMatrix4fv(glGetUniformLocation(prog,'model'),1,GL_FALSE, glm.value_ptr(model))
             glBindVertexArray(vao); glDrawArrays(GL_TRIANGLES, 0, count)
-
-        # Небо (боковые стороны с background.png)
-        sky_model = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 1.0, 1.0))
-        draw_textured(skybox_sides_vao, skybox_sides_count, tex_background, sky_model, 128.0)
-        
-        # Небо (верхняя часть с sky.png)
-        draw_textured(skybox_top_vao, skybox_top_count, tex_sky, sky_model, 128.0)
 
         # plane (sand)
         draw_textured(plane_vao, plane_count, tex_sand, glm.translate(glm.mat4(1.0), glm.vec3(0.0,-0.01,0.0)), 8.0)
@@ -741,16 +741,16 @@ def main():
         draw_textured(cube_vao, cube_count, tex_squid, nose, 12.0)
         
         # Окна
-        window_left = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(-0.45, 2.2, 0.9)) * glm.scale(glm.mat4(1.0), glm.vec3(0.5,0.5,0.5))
-        window_right = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(0.45, 2.2, 0.9)) * glm.scale(glm.mat4(1.0), glm.vec3(0.5,0.5,0.5))
+        window_left = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(-0.45, 2.2, 0.86)) * glm.scale(glm.mat4(1.0), glm.vec3(0.5,0.5,0.5))
+        window_right = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(0.45, 2.2, 0.86)) * glm.scale(glm.mat4(1.0), glm.vec3(0.5,0.5,0.5))
         
         # Рамки окон (объемные)
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_left, 64.0)
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_right, 64.0)
         
         # Стекла окон (немного смещены назад относительно рамок)
-        window_glass_left = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(-0.45, 2.2, 0.9)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.35,0.35,0.35))
-        window_glass_right = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(0.45, 2.2, 0.9)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.35,0.35,0.35))
+        window_glass_left = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(-0.45, 2.2, 0.86)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.35,0.35,0.35))
+        window_glass_right = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(0.45, 2.2, 0.86)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.35,0.35,0.35))
         
         draw_textured(disk_vao, disk_count, tex_window_blue, window_glass_left, 64.0)
         draw_textured(disk_vao, disk_count, tex_window_blue, window_glass_right, 64.0)
@@ -779,7 +779,7 @@ def main():
         # Рамки окон (объемные)
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_sponge_left, 64.0)
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_sponge_right, 64.0)
-        w
+        
         # Стекла окон (немного смещены назад)
         window_glass_sponge_left = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(-0.8, 2.0, 0.75)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.rotate(glm.mat4(1.0), glm.radians(45.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-33.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
         window_glass_sponge_right = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.7, 1.3, 1.15)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.rotate(glm.mat4(1.0), glm.radians(-30.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-10.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
@@ -794,6 +794,36 @@ def main():
         # Рамка вокруг двери Спанчбоба (изогнутая, повторяет форму полуэллипса)
         door_frame_model = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.0, 0.0, 1.45)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 2.2, 0.8))
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, door_frame_model, 64.0)
+        
+        # Рендер цветков (после всей сцены, чтобы прозрачность работала правильно)
+        glUseProgram(flower_prog)
+        glUniformMatrix4fv(glGetUniformLocation(flower_prog, 'view'), 1, GL_FALSE, glm.value_ptr(view))
+        glUniformMatrix4fv(glGetUniformLocation(flower_prog, 'projection'), 1, GL_FALSE, glm.value_ptr(proj))
+        
+        glActiveTexture(GL_TEXTURE0)
+        glBindTexture(GL_TEXTURE_2D, tex_flower)
+        glUniform1i(glGetUniformLocation(flower_prog, 'texture_diffuse1'), 0)
+        
+        glBindVertexArray(flower_vao)
+        
+        for pos in flower_positions:
+            # Создаем билборд - цветок всегда повернут к камере
+            model = glm.translate(glm.mat4(1.0), pos)
+            
+            # Вычисляем направление от цветка к камере
+            to_camera = glm.normalize(cam_pos - pos)
+            # Создаем матрицу поворота чтобы цветок смотрел на камеру
+            up = glm.vec3(0.0, 1.0, 0.0)
+            right = glm.normalize(glm.cross(up, to_camera))
+            up = glm.normalize(glm.cross(to_camera, right))
+            
+            # Применяем поворот
+            model[0][0] = right.x; model[0][1] = right.y; model[0][2] = right.z
+            model[1][0] = up.x;    model[1][1] = up.y;    model[1][2] = up.z
+            model[2][0] = to_camera.x; model[2][1] = to_camera.y; model[2][2] = to_camera.z
+            
+            glUniformMatrix4fv(glGetUniformLocation(flower_prog, 'model'), 1, GL_FALSE, glm.value_ptr(model))
+            glDrawArrays(GL_TRIANGLES, 0, flower_count)
 
         glfw.swap_buffers(window)
 
