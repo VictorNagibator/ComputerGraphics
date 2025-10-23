@@ -1,32 +1,3 @@
-"""
-Bikini Bottom — статическая 3D-сцена на Python + PyOpenGL + GLFW
-
-Обновлённая версия — правки по последним замечаниям пользователя:
-1) небо заменено на простой голубой цвет
-2) добавлены большие цветочки с прозрачностью в небе (15 штук)
-3) цветочки используют разные текстуры
-
-Файлы текстур (положить рядом в папке `textures/`):
-    textures/sand.png
-    textures/green_flower.png  # <-- разные цветочки
-    textures/pink_flower.png
-    textures/blue_flower.png  
-    textures/yellow_flower.png
-    textures/pineapple.png
-    textures/rock.png
-    textures/squidward.png
-    textures/leaf.png
-    textures/road.png
-    textures/wood.png
-    textures/metal.png
-
-Зависимости:
-    pip install PyOpenGL PyOpenGL_accelerate glfw Pillow PyGLM numpy
-
-Запуск:
-    python bikini_bottom_python.py
-"""
-
 from OpenGL.GL import *
 import glfw
 import numpy as np
@@ -36,8 +7,9 @@ from pyglm import glm
 import os
 import sys
 import random
+import math
 
-# ---------- Шейдеры (GLSL) - ДОБАВЛЕН ШЕЙДЕР ДЛЯ ЦВЕТКОВ С ПРОЗРАЧНОСТЬЮ
+# ---------- Шейдеры (GLSL) ----------
 VERT_SHADER = """#version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
@@ -114,7 +86,6 @@ void main(){
 }
 """
 
-# Простой шейдер для цветков с прозрачностью
 FLOWER_VERT_SHADER = """#version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 2) in vec2 aTex;
@@ -160,7 +131,7 @@ DEPTH_FS = """#version 330 core
 void main(){}
 """
 
-# ---------- Помощники для шейдеров
+# ---------- Помощники для шейдеров ----------
 
 def compile_shader(src, type):
     shader = glCreateShader(type)
@@ -171,7 +142,6 @@ def compile_shader(src, type):
         info = glGetShaderInfoLog(shader).decode()
         raise RuntimeError(f"Shader compile error: {info}")
     return shader
-
 
 def link_program(vs_src, fs_src):
     vs = compile_shader(vs_src, GL_VERTEX_SHADER)
@@ -187,7 +157,7 @@ def link_program(vs_src, fs_src):
     glDeleteShader(vs); glDeleteShader(fs)
     return prog
 
-# ---------- Примитивы (плоскость, куб, цилиндр, сфера, диск)
+# ---------- Примитивы ----------
 
 def create_plane(size=50.0, uv_scale=1.0):
     s = size
@@ -198,7 +168,6 @@ def create_plane(size=50.0, uv_scale=1.0):
         v = (z) / uv_scale
         verts.extend([x,y,z, 0.0,1.0,0.0, u, v])
     return np.array(verts, dtype=np.float32)
-
 
 def create_cube():
     verts = []
@@ -216,7 +185,6 @@ def create_cube():
     pushFace((-0.5,-0.5,-0.5),(0.5,-0.5,0.5),(0.5,-0.5,-0.5),(-0.5,-0.5,0.5),(0,-1,0))
     pushFace((-0.5,0.5,-0.5),(0.5,0.5,0.5),(0.5,0.5,-0.5),(-0.5,0.5,0.5),(0,1,0))
     return np.array(verts, dtype=np.float32)
-
 
 def create_cylinder(segments=64):
     verts = []
@@ -236,7 +204,6 @@ def create_cylinder(segments=64):
         verts.extend([*p3,*n1, (i+1)/segments,1])
         verts.extend([*p1,*n1, (i+1)/segments,0])
     return np.array(verts, dtype=np.float32)
-
 
 def create_sphere(lat=32, lon=32):
     verts = []
@@ -258,7 +225,6 @@ def create_sphere(lat=32, lon=32):
             verts.extend([*p4,*p4, (j+1)/lon, (i+1)/lat])
     return np.array(verts, dtype=np.float32)
 
-
 def create_disk(segments=64):
     verts = []
     center = (0.0, 0.0, 0.0)
@@ -273,138 +239,52 @@ def create_disk(segments=64):
         verts.extend([*p1, *normal, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
     return np.array(verts, dtype=np.float32)
 
-
 def create_window_frame(outer_radius=0.5, inner_radius=0.35, thickness=0.05, segments=32):
-    """Создает объемную рамку окна (тороид)"""
     verts = []
-    
     for i in range(segments):
         a0 = 2*np.pi*i/segments
         a1 = 2*np.pi*(i+1)/segments
-        
-        # Внешние точки (с учетом толщины)
         p0_outer_front = (outer_radius*np.cos(a0), outer_radius*np.sin(a0), thickness/2)
         p1_outer_front = (outer_radius*np.cos(a1), outer_radius*np.sin(a1), thickness/2)
         p0_outer_back = (outer_radius*np.cos(a0), outer_radius*np.sin(a0), -thickness/2)
         p1_outer_back = (outer_radius*np.cos(a1), outer_radius*np.sin(a1), -thickness/2)
-        
-        # Внутренние точки (с учетом толщины)
         p0_inner_front = (inner_radius*np.cos(a0), inner_radius*np.sin(a0), thickness/2)
         p1_inner_front = (inner_radius*np.cos(a1), inner_radius*np.sin(a1), thickness/2)
         p0_inner_back = (inner_radius*np.cos(a0), inner_radius*np.sin(a0), -thickness/2)
         p1_inner_back = (inner_radius*np.cos(a1), inner_radius*np.sin(a1), -thickness/2)
-        
-        # Нормали
         n_outer = (np.cos(a0), np.sin(a0), 0)
         n_inner = (-np.cos(a0), -np.sin(a0), 0)
         n_top = (0, 0, 1)
         n_bottom = (0, 0, -1)
-        
-        # Внешняя боковая поверхность
         verts.extend([*p0_outer_front, *n_outer, i/segments, 0])
         verts.extend([*p0_outer_back, *n_outer, i/segments, 1])
         verts.extend([*p1_outer_front, *n_outer, (i+1)/segments, 0])
         verts.extend([*p1_outer_front, *n_outer, (i+1)/segments, 0])
         verts.extend([*p0_outer_back, *n_outer, i/segments, 1])
         verts.extend([*p1_outer_back, *n_outer, (i+1)/segments, 1])
-        
-        # Внутренняя боковая поверхность
         verts.extend([*p0_inner_front, *n_inner, i/segments, 0])
         verts.extend([*p1_inner_front, *n_inner, (i+1)/segments, 0])
         verts.extend([*p0_inner_back, *n_inner, i/segments, 1])
         verts.extend([*p1_inner_front, *n_inner, (i+1)/segments, 0])
         verts.extend([*p1_inner_back, *n_inner, (i+1)/segments, 1])
         verts.extend([*p0_inner_back, *n_inner, i/segments, 1])
-        
-        # Верхняя поверхность (передняя)
         verts.extend([*p0_outer_front, *n_top, 0.5+0.5*np.cos(a0), 0.5+0.5*np.sin(a0)])
         verts.extend([*p1_outer_front, *n_top, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
         verts.extend([*p0_inner_front, *n_top, 0.5+0.45*np.cos(a0), 0.5+0.45*np.sin(a0)])
         verts.extend([*p1_outer_front, *n_top, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
         verts.extend([*p1_inner_front, *n_top, 0.5+0.45*np.cos(a1), 0.5+0.45*np.sin(a1)])
         verts.extend([*p0_inner_front, *n_top, 0.5+0.45*np.cos(a0), 0.5+0.45*np.sin(a0)])
-        
-        # Нижняя поверхность (задняя)
         verts.extend([*p0_outer_back, *n_bottom, 0.5+0.5*np.cos(a0), 0.5+0.5*np.sin(a0)])
         verts.extend([*p0_inner_back, *n_bottom, 0.5+0.45*np.cos(a0), 0.5+0.45*np.sin(a0)])
         verts.extend([*p1_outer_back, *n_bottom, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
         verts.extend([*p1_outer_back, *n_bottom, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
         verts.extend([*p0_inner_back, *n_bottom, 0.5+0.45*np.cos(a0), 0.5+0.45*np.sin(a0)])
         verts.extend([*p1_inner_back, *n_bottom, 0.5+0.45*np.cos(a1), 0.5+0.45*np.sin(a1)])
-    
     return np.array(verts, dtype=np.float32)
-
-
-def create_door_frame(width=0.4, height=1.3, thickness=0.05, segments=16):
-    """Создает изогнутую рамку для двери в форме полуэллипса"""
-    verts = []
-    
-    # Полуэллипс для рамки двери
-    for i in range(segments):
-        # Углы для полуэллипса (от -pi/2 до pi/2)
-        a0 = -np.pi/2 + np.pi * i / segments
-        a1 = -np.pi/2 + np.pi * (i+1) / segments
-        
-        # Внешние точки эллипса
-        x0_outer = width/2 * np.cos(a0)
-        y0_outer = height/2 * np.sin(a0) + height/2
-        x1_outer = width/2 * np.cos(a1)
-        y1_outer = height/2 * np.sin(a1) + height/2
-        
-        # Внутренние точки эллипса
-        x0_inner = (width/2 - thickness) * np.cos(a0)
-        y0_inner = (height/2 - thickness) * np.sin(a0) + height/2
-        x1_inner = (width/2 - thickness) * np.cos(a1)
-        y1_inner = (height/2 - thickness) * np.sin(a1) + height/2
-        
-        # Нормали (направлены наружу от эллипса)
-        n0 = (np.cos(a0), np.sin(a0), 0)
-        n1 = (np.cos(a1), np.sin(a1), 0)
-        
-        # Передняя поверхность рамки
-        verts.extend([x0_outer, y0_outer, thickness/2, *n0, i/segments, 0])
-        verts.extend([x1_outer, y1_outer, thickness/2, *n1, (i+1)/segments, 0])
-        verts.extend([x0_inner, y0_inner, thickness/2, *n0, i/segments, 1])
-        
-        verts.extend([x1_outer, y1_outer, thickness/2, *n1, (i+1)/segments, 0])
-        verts.extend([x1_inner, y1_inner, thickness/2, *n1, (i+1)/segments, 1])
-        verts.extend([x0_inner, y0_inner, thickness/2, *n0, i/segments, 1])
-        
-        # Задняя поверхность рамки
-        verts.extend([x0_outer, y0_outer, -thickness/2, *n0, i/segments, 0])
-        verts.extend([x0_inner, y0_inner, -thickness/2, *n0, i/segments, 1])
-        verts.extend([x1_outer, y1_outer, -thickness/2, *n1, (i+1)/segments, 0])
-        
-        verts.extend([x1_outer, y1_outer, -thickness/2, *n1, (i+1)/segments, 0])
-        verts.extend([x0_inner, y0_inner, -thickness/2, *n0, i/segments, 1])
-        verts.extend([x1_inner, y1_inner, -thickness/2, *n1, (i+1)/segments, 1])
-        
-        # Боковая поверхность (внешняя)
-        verts.extend([x0_outer, y0_outer, thickness/2, *n0, i/segments, 0])
-        verts.extend([x0_outer, y0_outer, -thickness/2, *n0, i/segments, 1])
-        verts.extend([x1_outer, y1_outer, thickness/2, *n1, (i+1)/segments, 0])
-        
-        verts.extend([x1_outer, y1_outer, thickness/2, *n1, (i+1)/segments, 0])
-        verts.extend([x0_outer, y0_outer, -thickness/2, *n0, i/segments, 1])
-        verts.extend([x1_outer, y1_outer, -thickness/2, *n1, (i+1)/segments, 1])
-        
-        # Боковая поверхность (внутренняя)
-        verts.extend([x0_inner, y0_inner, thickness/2, *n0, i/segments, 0])
-        verts.extend([x1_inner, y1_inner, thickness/2, *n1, (i+1)/segments, 0])
-        verts.extend([x0_inner, y0_inner, -thickness/2, *n0, i/segments, 1])
-        
-        verts.extend([x1_inner, y1_inner, thickness/2, *n1, (i+1)/segments, 0])
-        verts.extend([x1_inner, y1_inner, -thickness/2, *n1, (i+1)/segments, 1])
-        verts.extend([x0_inner, y0_inner, -thickness/2, *n0, i/segments, 1])
-    
-    return np.array(verts, dtype=np.float32)
-
 
 def create_flower_quad(size=1.0):
-    """Создает квадрат для цветка (билборд)"""
     verts = []
     s = size / 2.0
-    # Квадрат, ориентированный по оси Y
     coords = [
         (-s, -s, 0.0), (s, s, 0.0), (s, -s, 0.0),
         (s, s, 0.0), (-s, -s, 0.0), (-s, s, 0.0)
@@ -414,17 +294,66 @@ def create_flower_quad(size=1.0):
         (1.0, 1.0), (0.0, 0.0), (0.0, 1.0)
     ]
     normal = (0.0, 0.0, 1.0)
-    
     for i in range(6):
         verts.extend([*coords[i], *normal, *tex_coords[i]])
-    
     return np.array(verts, dtype=np.float32)
 
-# ---------- Загрузка текстуры
+def create_curved_road(length=40.0, width=3.0, curve_radius=25.0, segments=64):
+    verts = []
+    start_x = -20.0
+    start_z = 8.0
+    for i in range(segments):
+        t0 = i / segments
+        t1 = (i + 1) / segments
+        angle0 = t0 * (math.pi / 2)
+        angle1 = t1 * (math.pi / 2)
+        x0 = start_x - curve_radius * math.sin(angle0)
+        z0 = start_z + curve_radius * (1 - math.cos(angle0))
+        x1 = start_x - curve_radius * math.sin(angle1)
+        z1 = start_z + curve_radius * (1 - math.cos(angle1))
+        dx0 = -curve_radius * math.cos(angle0)
+        dz0 = curve_radius * math.sin(angle0)
+        dx1 = -curve_radius * math.cos(angle1)
+        dz1 = curve_radius * math.sin(angle1)
+        length0 = math.sqrt(dx0*dx0 + dz0*dz0)
+        length1 = math.sqrt(dx1*dx1 + dz1*dz1)
+        if length0 > 0:
+            dx0 /= length0
+            dz0 /= length0
+        if length1 > 0:
+            dx1 /= length1
+            dz1 /= length1
+        px0 = -dz0
+        pz0 = dx0
+        px1 = -dz1
+        pz1 = dx1
+        half_width = width / 2.0
+        left_x0 = x0 + px0 * half_width
+        left_z0 = z0 + pz0 * half_width
+        left_x1 = x1 + px1 * half_width
+        left_z1 = z1 + pz1 * half_width
+        right_x0 = x0 - px0 * half_width
+        right_z0 = z0 - pz0 * half_width
+        right_x1 = x1 - px1 * half_width
+        right_z1 = z1 - pz1 * half_width
+        normal = (0.0, 1.0, 0.0)
+        height = 0.005 
+        u0 = t0 * 10.0
+        u1 = t1 * 10.0
+        v_left = 0.0
+        v_right = 1.0
+        verts.extend([left_x0, height, left_z0, *normal, u0, v_left])
+        verts.extend([right_x1, height, right_z1, *normal, u1, v_right])
+        verts.extend([right_x0, height, right_z0, *normal, u0, v_right])
+        verts.extend([left_x0, height, left_z0, *normal, u0, v_left])
+        verts.extend([left_x1, height, left_z1, *normal, u1, v_left])
+        verts.extend([right_x1, height, right_z1, *normal, u1, v_right])
+    return np.array(verts, dtype=np.float32)
+
 
 def load_texture(path):
     img = Image.open(path).convert('RGBA')
-    img_data = np.array(img)[::-1]  # flip vertically
+    img_data = np.array(img)[::-1]
     tex = glGenTextures(1)
     glBindTexture(GL_TEXTURE_2D, tex)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, img.width, img.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
@@ -440,7 +369,7 @@ def load_texture(path):
         pass
     return tex
 
-# ---------- GL буферы/VAO
+# ---------- GL буферы/VAO ----------
 
 def make_vao(data, stride_elems=8):
     vao = glGenVertexArrays(1)
@@ -458,12 +387,10 @@ def make_vao(data, stride_elems=8):
     glBindVertexArray(0)
     return vao, vbo, int(len(data)//stride_elems)
 
-# ---------- Утилиты рисования параллелепипеда (масштабированный куб)
-
 def model_for_box(center, size):
     return glm.translate(glm.mat4(1.0), glm.vec3(*center)) * glm.scale(glm.mat4(1.0), glm.vec3(*size))
 
-# ---------- Main
+# ---------- Main ----------
 
 def main():
     if not glfw.init():
@@ -477,15 +404,14 @@ def main():
     glfw.make_context_current(window)
     glfw.swap_interval(1)
 
-    # захватываем курсор для FPS-камеры
     glfw.set_input_mode(window, glfw.CURSOR, glfw.CURSOR_DISABLED)
 
     prog = link_program(VERT_SHADER, FRAG_SHADER)
     depth_prog = link_program(DEPTH_VS, DEPTH_FS)
-    flower_prog = link_program(FLOWER_VERT_SHADER, FLOWER_FRAG_SHADER)  # Шейдер для цветков
+    flower_prog = link_program(FLOWER_VERT_SHADER, FLOWER_FRAG_SHADER)
 
     # создать меши
-    plane_data = create_plane(40.0, uv_scale=30.0)
+    plane_data = create_plane(80.0, uv_scale=30.0)
     plane_vao, _, plane_count = make_vao(plane_data)
     cube_data = create_cube()
     cube_vao, _, cube_count = make_vao(cube_data)
@@ -497,25 +423,20 @@ def main():
     disk_vao, _, disk_count = make_vao(disk_data)
     window_frame_data = create_window_frame(thickness=0.08)
     window_frame_vao, _, window_frame_count = make_vao(window_frame_data)
-    door_frame_data = create_door_frame()
-    door_frame_vao, _, door_frame_count = make_vao(door_frame_data)
-    
-    # Меш для цветков
-    flower_data = create_flower_quad(6.0)
+    flower_data = create_flower_quad(8.0)
     flower_vao, _, flower_count = make_vao(flower_data)
+    curved_road_data = create_curved_road(length=40.0, width=3.0, curve_radius=25.0, segments=64)
+    curved_road_vao, _, curved_road_count = make_vao(curved_road_data)
 
-    # текстуры — ищем в папке textures
+    # текстуры
     texdir = os.path.join(os.path.dirname(__file__), 'textures')
     tex_sand = load_texture(os.path.join(texdir, 'sand.png'))
-    
-    # Загружаем разные текстуры цветков
     tex_flowers = [
         load_texture(os.path.join(texdir, 'green_flower.png')), 
         load_texture(os.path.join(texdir, 'pink_flower.png')),
         load_texture(os.path.join(texdir, 'blue_flower.png')),
         load_texture(os.path.join(texdir, 'yellow_flower.png'))
     ]
-    
     tex_pine = load_texture(os.path.join(texdir, 'pineapple.png'))
     tex_rock = load_texture(os.path.join(texdir, 'rock.png'))
     tex_squid = load_texture(os.path.join(texdir, 'squidward.png'))
@@ -523,8 +444,8 @@ def main():
     tex_road = load_texture(os.path.join(texdir, 'road.png'))
     tex_wood = load_texture(os.path.join(texdir, 'wood.png'))
     tex_metal = load_texture(os.path.join(texdir, 'metal.png'))
+    tex_metal_house = load_texture(os.path.join(texdir, 'metal_house.png'))
     
-    # Создаем простые однотонные текстуры для окон
     def create_color_texture(r, g, b, a=1.0):
         data = np.array([[int(r*255), int(g*255), int(b*255), int(a*255)]], dtype=np.uint8)
         tex = glGenTextures(1)
@@ -534,8 +455,8 @@ def main():
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
         return tex
     
-    tex_window_blue = create_color_texture(0.5, 0.7, 1.0)  # Голубое стекло
-    tex_window_frame = create_color_texture(0.2, 0.3, 0.8)  # Синяя рамка
+    tex_window_blue = create_color_texture(0.5, 0.7, 1.0)
+    tex_window_frame = create_color_texture(0.2, 0.3, 0.8)
 
     # теневой фреймбуфер
     SHADOW_W, SHADOW_H = 2048, 2048
@@ -557,10 +478,10 @@ def main():
     glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
     glEnable(GL_DEPTH_TEST)
-    glEnable(GL_BLEND)  # Включаем смешивание для прозрачности
+    glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
-    # камера - теперь FPS-подобная
+    # камера
     yaw, pitch = -90.0, 0.0
     cam_pos = glm.vec3(0.0, 3.0, 18.0)
     cam_front = glm.vec3(0.0, 0.0, -1.0)
@@ -590,25 +511,39 @@ def main():
 
     glfw.set_cursor_pos_callback(window, cursor_pos)
 
-    # свет - изменена позиция для правильных теней
+    # свет
     light_pos = glm.vec3(-10.0, 20.0, 5.0)
 
-    # позиции домиков: одна линия по оси X, одинаковая z
+    # позиции домиков
     line_z = 0.0
     pos_patrick = glm.vec3(-8.0, 0.0, line_z)
     pos_squid = glm.vec3(0.0, 0.0, line_z)
     pos_sponge = glm.vec3(8.0, 0.0, line_z)
     
-    # Позиции для цветков в небе (случайные) - теперь храним также тип цветка
+    # Позиции для цветков в небе
     flower_positions = []
-    for _ in range(20):
-        x = random.uniform(-35, 35)
-        y = random.uniform(25, 40)
-        z = random.uniform(-35, 35)
-        flower_type = random.randint(0, len(tex_flowers) - 1)  # случайный тип цветка
+    for _ in range(30):
+        x = random.uniform(-80, 80)
+        y = random.uniform(35, 45)
+        z = random.uniform(-80, 80)
+        flower_type = random.randint(0, len(tex_flowers) - 1)
         flower_positions.append((glm.vec3(x, y, z), flower_type))
+        
+    # Позиции для домиков обычных жителей
+    house_positions = [glm.vec3(-35, 0.0, 9.5),
+                       glm.vec3(-36, 0.0, 18.0),
+                       glm.vec3(-44, 0.0, 18.0),
+                       glm.vec3(-48, 0.0, 32.0),
+                       glm.vec3(-41, 0.0, 30.0),
+                       glm.vec3(-47, 0.0, 25.0),
+                       ]
+    
+    # случайная высота домиков
+    random_height_bonuses = [random.randint(-2, 2) for _ in range(len(house_positions))]
 
-    # вспомогательная функция - обработка управления WASD/Space/Ctrl
+    # случайная текстура домика
+    random_texture_for_houses = [tex_metal_house if random.randint(0,1) == 1 else tex_metal for _ in range(len(house_positions))]
+    
     def process_movement(delta):
         nonlocal cam_pos
         speed = movement_speed * delta
@@ -653,21 +588,36 @@ def main():
             model_p = glm.translate(glm.mat4(1.0), pos_patrick + glm.vec3(0.0,0.6,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.8,1.0,1.8))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_p))
             glBindVertexArray(sph_vao); glDrawArrays(GL_TRIANGLES,0,sph_count)
-            # Squidward - увеличенный цилиндр
+            # Squidward
             model_sq = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(0.0,0.0,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.8,4.0,1.8))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_sq))
             glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
-            # Sponge (half ellipsoid) - ИСПРАВЛЕНО: добавлен в теневой рендер
+            # Sponge
             model_sb = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.0,0.6,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.6,2.0,1.2))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_sb))
             glBindVertexArray(sph_vao); glDrawArrays(GL_TRIANGLES,0,sph_count)
+            
+            # Домики обычных жителей для теневой карты
+            for house_pos in house_positions:
+                # Тело домика (цилиндр) - УВЕЛИЧЕН ДИАМЕТР
+                model_house = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 1.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.5, 3.0, 1.5))  # ДИАМЕТР 1.5
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_house))
+                glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
+                
+                # Крыша домика - ОБЪЕМНАЯ: цилиндр + диск сверху
+                model_roof_base = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 3.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.7, 0.2, 1.7))  # цилиндр для объема
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_roof_base))
+                glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
+                
+                model_roof_top = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 3.1, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.7, 1.0, 1.7))  # диск сверху
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_roof_top))
+                glBindVertexArray(disk_vao); glDrawArrays(GL_TRIANGLES,0,disk_count)
 
         render_depth()
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
         # 2) основной рендер
         glViewport(0,0,w,h)
-        # Изменен цвет фона на простой голубой (небо)
         glClearColor(0.6,0.85,0.92,1.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glUseProgram(prog)
@@ -693,17 +643,64 @@ def main():
         # plane (sand)
         draw_textured(plane_vao, plane_count, tex_sand, glm.translate(glm.mat4(1.0), glm.vec3(0.0,-0.01,0.0)), 8.0)
 
-        # Дороги
         # Главная дорога
-        road_main = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, 8.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.1, 3.0))
+        road_main = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, 8.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
         draw_textured(cube_vao, cube_count, tex_road, road_main, 16.0)
+
+        # Изогнутая дорога
+        curved_road_model = glm.mat4(1.0)
+        draw_textured(curved_road_vao, curved_road_count, tex_road, curved_road_model, 16.0)
+
         
+        # Домики обычных жителей 
+        for house_pos in house_positions:
+            random_height_bonus = random_height_bonuses[house_positions.index(house_pos)]
+            random_tex = random_texture_for_houses[house_positions.index(house_pos)]
+
+            # Тело домика (цилиндр)
+            model_house = glm.translate(glm.mat4(1.0), house_pos) * glm.scale(glm.mat4(1.0), glm.vec3(2.0, 10.0 + random_height_bonus, 2.0))  # ДИАМЕТР 1.5
+            draw_textured(cyl_vao, cyl_count, random_tex, model_house, 24.0)
+            
+            # Крыша домика
+            # Основание крыши (цилиндр с небольшой высотой)
+            model_roof_base = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 5.0 + random_height_bonus / 2, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.2, 0.2, 2.2))
+            draw_textured(cyl_vao, cyl_count, random_tex, model_roof_base, 24.0)
+
+            # нижняя часть крыши
+            model_roof_bottom = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 5.0 + random_height_bonus / 2, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.2, 1.0, 2.2))
+            draw_textured(disk_vao, disk_count, random_tex, model_roof_bottom, 24.0)
+            
+            # Верхняя часть крыши (диск)
+            model_roof_top = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 5.1 + random_height_bonus / 2, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.2, 1.0, 2.2))
+            draw_textured(disk_vao, disk_count, random_tex, model_roof_top, 24.0)
+
+            # Труба на крыше
+            model_chimney = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(random_height_bonus / 4, 5.1 + random_height_bonus / 2, random_height_bonus / 4)) * glm.scale(glm.mat4(1.0), glm.vec3(0.4, 2.0, 0.4))
+            draw_textured(cyl_vao, cyl_count, random_tex, model_chimney, 24.0)
+            model_chimney_disk = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(random_height_bonus / 4, 5.9 + random_height_bonus / 2, random_height_bonus / 4)) * glm.scale(glm.mat4(1.0), glm.vec3(0.4, 2.0, 0.4))
+            draw_textured(disk_vao, disk_count, random_tex, model_chimney_disk, 24.0)
+            
+            # Окна домика
+            window_front = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 1.5 + random_height_bonus / 2, 1.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.75,0.75,0.75))
+            window_back = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 4.0 + random_height_bonus / 2, -1.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.75,0.75,0.75))
+          
+            # Рамки окон
+            draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_front, 64.0)
+            draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_back, 64.0)
+            
+            # Стекла окон
+            window_glass_front = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 1.5 + random_height_bonus / 2, 1.0)) * glm.scale(glm.mat4(1.0) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)), glm.vec3(0.6, 0.6, 0.6))
+            window_glass_back = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 4.0 + random_height_bonus / 2, -1.0)) * glm.scale(glm.mat4(1.0) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)), glm.vec3(0.6, 0.6, 0.6))
+      
+            draw_textured(disk_vao, disk_count, tex_window_blue, window_glass_front, 64.0)
+            draw_textured(disk_vao, disk_count, tex_window_blue, window_glass_back, 64.0)
+
         # Дорожка к дому Патрика
-        road_patrick = glm.translate(glm.mat4(1.0), glm.vec3(-8.0, 0.0, 3.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(7.0, 0.1, 1.0))
+        road_patrick = glm.translate(glm.mat4(1.0), glm.vec3(-8.0, 0.0, 3.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(7.0, 0.01, 1.0))
         draw_textured(cube_vao, cube_count, tex_road, road_patrick, 16.0)
         
         # Дорожка к дому Спанчбоба
-        road_sponge = glm.translate(glm.mat4(1.0), glm.vec3(8.0, 0.0, 3.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(7.0, 0.1, 1.0))
+        road_sponge = glm.translate(glm.mat4(1.0), glm.vec3(8.0, 0.0, 3.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(7.0, 0.01, 1.0))
         draw_textured(cube_vao, cube_count, tex_road, road_sponge, 16.0)
 
         # Дорожка к дому Сквидварда
