@@ -55,16 +55,16 @@ float ShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir){
     if(projCoords.z > 1.0) return 0.0;
     float closestDepth = texture(shadowMap, projCoords.xy).r;
     float currentDepth = projCoords.z;
-    float bias = max(0.01 * (1.0 - dot(normal, lightDir)), 0.005);
+    float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);  // Увеличил bias для лучших результатов
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-    for(int x=-1;x<=1;x++){
-        for(int y=-1;y<=1;y++){
+    for(int x=-2;x<=2;x++){  // Увеличил радиус PCF для сглаживания
+        for(int y=-2;y<=2;y++){
             float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x,y)*texelSize).r;
-            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+            shadow += (currentDepth - bias > pcfDepth) ? 1.0 : 0.0;
         }
     }
-    shadow /= 9.0;
+    shadow /= 25.0;
     return shadow;
 }
 
@@ -72,14 +72,14 @@ void main(){
     vec3 color = texture(texture_diffuse1, TexCoord).rgb;
     vec3 normal = normalize(Normal);
     vec3 lightColor = vec3(1.0);
-    vec3 ambient = 0.2 * color;
+    vec3 ambient = 0.3 * color;  // Увеличил ambient для лучшей видимости в тенях
     vec3 lightDir = normalize(lightPos - FragPos);
     float diff = max(dot(normal, lightDir), 0.0);
     vec3 diffuse = diff * color;
     vec3 viewDir = normalize(viewPos - FragPos);
     vec3 reflectDir = reflect(-lightDir, normal);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), materialShininess);
-    vec3 specular = spec * lightColor * 0.5;
+    vec3 specular = spec * lightColor * 0.3;
     float shadow = ShadowCalculation(FragPosLightSpace, normal, lightDir);
     vec3 lighting = ambient + (1.0 - shadow) * (diffuse + specular);
     FragColor = vec4(lighting, 1.0);
@@ -337,7 +337,7 @@ def create_curved_road(length=40.0, width=3.0, curve_radius=25.0, segments=64):
         right_x1 = x1 - px1 * half_width
         right_z1 = z1 - pz1 * half_width
         normal = (0.0, 1.0, 0.0)
-        height = 0.005 
+        height = 0.05 
         u0 = t0 * 10.0
         u1 = t1 * 10.0
         v_left = 0.0
@@ -349,7 +349,6 @@ def create_curved_road(length=40.0, width=3.0, curve_radius=25.0, segments=64):
         verts.extend([left_x1, height, left_z1, *normal, u1, v_left])
         verts.extend([right_x1, height, right_z1, *normal, u1, v_right])
     return np.array(verts, dtype=np.float32)
-
 
 def load_texture(path):
     img = Image.open(path).convert('RGBA')
@@ -459,13 +458,13 @@ def main():
     tex_window_frame = create_color_texture(0.2, 0.3, 0.8)
 
     # теневой фреймбуфер
-    SHADOW_W, SHADOW_H = 2048, 2048
+    SHADOW_W, SHADOW_H = 4096, 4096  # Увеличил разрешение для лучшего качества теней
     depth_map_fbo = glGenFramebuffers(1)
     depth_map = glGenTextures(1)
     glBindTexture(GL_TEXTURE_2D, depth_map)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_W, SHADOW_H, 0, GL_DEPTH_COMPONENT, GL_FLOAT, None)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)  # Изменил на LINEAR для сглаживания
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER)
     border = (GLfloat * 4)(1.0,1.0,1.0,1.0)
@@ -511,8 +510,8 @@ def main():
 
     glfw.set_cursor_pos_callback(window, cursor_pos)
 
-    # свет
-    light_pos = glm.vec3(-10.0, 20.0, 5.0)
+    # свет - улучшена позиция для лучших теней
+    light_pos = glm.vec3(-15.0, 25.0, 10.0)
 
     # позиции домиков
     line_z = 0.0
@@ -562,6 +561,10 @@ def main():
 
     # рендер цикл
     while not glfw.window_should_close(window):
+        # Проверка на закрытие по ESC
+        if glfw.get_key(window, glfw.KEY_ESCAPE) == glfw.PRESS:
+            glfw.set_window_should_close(window, True)
+            
         current = glfw.get_time()
         delta = current - last_time
         last_time = current
@@ -570,8 +573,8 @@ def main():
         w, h = glfw.get_framebuffer_size(window)
 
         # 1) рендер теневой карты
-        near_plane, far_plane = 1.0, 120.0
-        light_proj = glm.ortho(-60.0,60.0,-60.0,60.0, near_plane, far_plane)
+        near_plane, far_plane = 1.0, 150.0  # Увеличил far_plane для большей сцены
+        light_proj = glm.ortho(-70.0,70.0,-70.0,70.0, near_plane, far_plane)  # Увеличил область обзора
         light_view = glm.lookAt(light_pos, glm.vec3(0.0,0.0,0.0), glm.vec3(0.0,1.0,0.0))
         light_space = light_proj * light_view
         glViewport(0,0,SHADOW_W,SHADOW_H)
@@ -598,20 +601,22 @@ def main():
             glBindVertexArray(sph_vao); glDrawArrays(GL_TRIANGLES,0,sph_count)
             
             # Домики обычных жителей для теневой карты
-            for house_pos in house_positions:
-                # Тело домика (цилиндр) - УВЕЛИЧЕН ДИАМЕТР
-                model_house = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 1.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.5, 3.0, 1.5))  # ДИАМЕТР 1.5
+            for i, house_pos in enumerate(house_positions):
+                random_height_bonus = random_height_bonuses[i]
+                # Тело домика (цилиндр)
+                model_house = glm.translate(glm.mat4(1.0), house_pos) * glm.scale(glm.mat4(1.0), glm.vec3(2.0, 10.0 + random_height_bonus, 2.0))
                 glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_house))
                 glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
                 
-                # Крыша домика - ОБЪЕМНАЯ: цилиндр + диск сверху
-                model_roof_base = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 3.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.7, 0.2, 1.7))  # цилиндр для объема
+                # Крыша домика
+                model_roof_base = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 5.0 + random_height_bonus / 2, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.2, 0.2, 2.2))
                 glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_roof_base))
                 glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
-                
-                model_roof_top = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 3.1, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.7, 1.0, 1.7))  # диск сверху
-                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_roof_top))
-                glBindVertexArray(disk_vao); glDrawArrays(GL_TRIANGLES,0,disk_count)
+
+                # Труба на крыше
+                model_chimney = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(random_height_bonus / 4, 5.1 + random_height_bonus / 2, random_height_bonus / 4)) * glm.scale(glm.mat4(1.0), glm.vec3(0.4, 2.0, 0.4))
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_chimney))
+                glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
 
         render_depth()
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
@@ -647,18 +652,18 @@ def main():
         road_main = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, 8.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
         draw_textured(cube_vao, cube_count, tex_road, road_main, 16.0)
 
-        # Изогнутая дорога
+        # Изогнутая дорога - теперь с правильной толщиной 0.1
         curved_road_model = glm.mat4(1.0)
         draw_textured(curved_road_vao, curved_road_count, tex_road, curved_road_model, 16.0)
 
         
         # Домики обычных жителей 
-        for house_pos in house_positions:
-            random_height_bonus = random_height_bonuses[house_positions.index(house_pos)]
-            random_tex = random_texture_for_houses[house_positions.index(house_pos)]
+        for i, house_pos in enumerate(house_positions):
+            random_height_bonus = random_height_bonuses[i]
+            random_tex = random_texture_for_houses[i]
 
             # Тело домика (цилиндр)
-            model_house = glm.translate(glm.mat4(1.0), house_pos) * glm.scale(glm.mat4(1.0), glm.vec3(2.0, 10.0 + random_height_bonus, 2.0))  # ДИАМЕТР 1.5
+            model_house = glm.translate(glm.mat4(1.0), house_pos) * glm.scale(glm.mat4(1.0), glm.vec3(2.0, 10.0 + random_height_bonus, 2.0))
             draw_textured(cyl_vao, cyl_count, random_tex, model_house, 24.0)
             
             # Крыша домика
