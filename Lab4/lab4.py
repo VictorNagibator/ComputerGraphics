@@ -337,7 +337,7 @@ def create_curved_road(length=40.0, width=3.0, curve_radius=25.0, segments=64):
         right_x1 = x1 - px1 * half_width
         right_z1 = z1 - pz1 * half_width
         normal = (0.0, 1.0, 0.0)
-        height = 0.05 
+        height = 0.005 
         u0 = t0 * 10.0
         u1 = t1 * 10.0
         v_left = 0.0
@@ -389,14 +389,12 @@ def make_vao(data, stride_elems=8):
 def model_for_box(center, size):
     return glm.translate(glm.mat4(1.0), glm.vec3(*center)) * glm.scale(glm.mat4(1.0), glm.vec3(*size))
 
-# ---------- Main ----------
-
 def main():
     if not glfw.init():
         print('GLFW init failed')
         return
     width, height = 1280, 720
-    window = glfw.create_window(width, height, 'Lab4 - Bikini Bottom', None, None)
+    window = glfw.create_window(width, height, 'Лабораторная работа 4 - Бикини Боттом', None, None)
     if not window:
         print('Window creation failed')
         glfw.terminate(); return
@@ -458,7 +456,7 @@ def main():
     tex_window_frame = create_color_texture(0.2, 0.3, 0.8)
 
     # теневой фреймбуфер
-    SHADOW_W, SHADOW_H = 4096, 4096  # Увеличил разрешение для лучшего качества теней
+    SHADOW_W, SHADOW_H = 4096, 4096 
     depth_map_fbo = glGenFramebuffers(1)
     depth_map = glGenTextures(1)
     glBindTexture(GL_TEXTURE_2D, depth_map)
@@ -511,7 +509,7 @@ def main():
     glfw.set_cursor_pos_callback(window, cursor_pos)
 
     # свет - улучшена позиция для лучших теней
-    light_pos = glm.vec3(-15.0, 25.0, 10.0)
+    light_pos = glm.vec3(0.0, 25.0, -20.0)
 
     # позиции домиков
     line_z = 0.0
@@ -652,11 +650,14 @@ def main():
         road_main = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, 8.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
         draw_textured(cube_vao, cube_count, tex_road, road_main, 16.0)
 
-        # Изогнутая дорога - теперь с правильной толщиной 0.1
+        # Изогнутая дорога
         curved_road_model = glm.mat4(1.0)
         draw_textured(curved_road_vao, curved_road_count, tex_road, curved_road_model, 16.0)
 
-        
+        # Дорога дальше после изогнутой
+        road_next = glm.translate(glm.mat4(1.0), glm.vec3(-45.0, 0.0, 53.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
+        draw_textured(cube_vao, cube_count, tex_road, road_next, 16.0)
+
         # Домики обычных жителей 
         for i, house_pos in enumerate(house_positions):
             random_height_bonus = random_height_bonuses[i]
