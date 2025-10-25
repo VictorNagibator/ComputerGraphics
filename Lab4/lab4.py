@@ -413,6 +413,105 @@ def create_curved_road(length=40.0, width=3.0, curve_radius=25.0, segments=64):
         verts.extend([right_x1, height, right_z1, *normal, u1, v_right])
     return np.array(verts, dtype=np.float32)
 
+def create_rectangular_window(width=1.0, height=1.0, frame_thickness=0.05):
+    verts = []
+    half_w = width / 2.0
+    half_h = height / 2.0
+    half_t = frame_thickness / 2.0
+    
+    # Вертикальные части рамки
+    # Левая
+    verts.extend([-half_w, -half_h, half_t, -1, 0, 0, 0, 0])
+    verts.extend([-half_w, half_h, half_t, -1, 0, 0, 1, 1])
+    verts.extend([-half_w, half_h, -half_t, -1, 0, 0, 1, 0])
+    verts.extend([-half_w, -half_h, half_t, -1, 0, 0, 0, 0])
+    verts.extend([-half_w, half_h, -half_t, -1, 0, 0, 1, 0])
+    verts.extend([-half_w, -half_h, -half_t, -1, 0, 0, 0, 1])
+    
+    # Правая
+    verts.extend([half_w, -half_h, half_t, 1, 0, 0, 0, 0])
+    verts.extend([half_w, half_h, -half_t, 1, 0, 0, 1, 1])
+    verts.extend([half_w, half_h, half_t, 1, 0, 0, 1, 0])
+    verts.extend([half_w, -half_h, half_t, 1, 0, 0, 0, 0])
+    verts.extend([half_w, -half_h, -half_t, 1, 0, 0, 0, 1])
+    verts.extend([half_w, half_h, -half_t, 1, 0, 0, 1, 1])
+    
+    # Горизонтальные части рамки
+    # Верхняя
+    verts.extend([-half_w, half_h, half_t, 0, 1, 0, 0, 0])
+    verts.extend([half_w, half_h, half_t, 0, 1, 0, 1, 1])
+    verts.extend([half_w, half_h, -half_t, 0, 1, 0, 1, 0])
+    verts.extend([-half_w, half_h, half_t, 0, 1, 0, 0, 0])
+    verts.extend([half_w, half_h, -half_t, 0, 1, 0, 1, 0])
+    verts.extend([-half_w, half_h, -half_t, 0, 1, 0, 0, 1])
+    
+    # Нижняя
+    verts.extend([-half_w, -half_h, half_t, 0, -1, 0, 0, 0])
+    verts.extend([half_w, -half_h, -half_t, 0, -1, 0, 1, 1])
+    verts.extend([half_w, -half_h, half_t, 0, -1, 0, 1, 0])
+    verts.extend([-half_w, -half_h, half_t, 0, -1, 0, 0, 0])
+    verts.extend([-half_w, -half_h, -half_t, 0, -1, 0, 0, 1])
+    verts.extend([half_w, -half_h, -half_t, 0, -1, 0, 1, 1])
+    
+    return np.array(verts, dtype=np.float32)
+
+def create_half_cylinder_with_caps(segments=64):
+    """Создает полуцилиндр с половинами верхнего и нижнего оснований"""
+    verts = []
+    
+    # Основная изогнутая поверхность (половина цилиндра)
+    for i in range(segments//2):
+        a0 = np.pi * i/segments * 2
+        a1 = np.pi * (i+1)/segments * 2
+        
+        # Точки для изогнутой поверхности
+        p0_bottom = (0.5*np.cos(a0), -0.5, 0.5*np.sin(a0))
+        p1_bottom = (0.5*np.cos(a1), -0.5, 0.5*np.sin(a1))
+        p0_top = (0.5*np.cos(a0), 0.5, 0.5*np.sin(a0))
+        p1_top = (0.5*np.cos(a1), 0.5, 0.5*np.sin(a1))
+        
+        # Нормали для изогнутой поверхности
+        n0 = (np.cos(a0), 0, np.sin(a0))
+        n1 = (np.cos(a1), 0, np.sin(a1))
+        
+        # Изогнутая поверхность
+        verts.extend([*p0_bottom, *n0, i/segments, 0])
+        verts.extend([*p0_top, *n0, i/segments, 1])
+        verts.extend([*p1_bottom, *n1, (i+1)/segments, 0])
+        verts.extend([*p0_top, *n0, i/segments, 1])
+        verts.extend([*p1_top, *n1, (i+1)/segments, 1])
+        verts.extend([*p1_bottom, *n1, (i+1)/segments, 0])
+    
+    # Нижнее основание (полукруг)
+    center_bottom = (0.0, -0.5, 0.0)
+    normal_bottom = (0.0, -1.0, 0.0)
+    for i in range(segments//2):
+        a0 = np.pi * i/segments * 2
+        a1 = np.pi * (i+1)/segments * 2
+        
+        p0 = (0.5*np.cos(a0), -0.5, 0.5*np.sin(a0))
+        p1 = (0.5*np.cos(a1), -0.5, 0.5*np.sin(a1))
+        
+        verts.extend([*center_bottom, *normal_bottom, 0.5, 0.5])
+        verts.extend([*p0, *normal_bottom, 0.5+0.5*np.cos(a0), 0.5+0.5*np.sin(a0)])
+        verts.extend([*p1, *normal_bottom, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
+    
+    # Верхнее основание (полукруг)
+    center_top = (0.0, 0.5, 0.0)
+    normal_top = (0.0, 1.0, 0.0)
+    for i in range(segments//2):
+        a0 = np.pi * i/segments * 2
+        a1 = np.pi * (i+1)/segments * 2
+        
+        p0 = (0.5*np.cos(a0), 0.5, 0.5*np.sin(a0))
+        p1 = (0.5*np.cos(a1), 0.5, 0.5*np.sin(a1))
+        
+        verts.extend([*center_top, *normal_top, 0.5, 0.5])
+        verts.extend([*p0, *normal_top, 0.5+0.5*np.cos(a0), 0.5+0.5*np.sin(a0)])
+        verts.extend([*p1, *normal_top, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
+    
+    return np.array(verts, dtype=np.float32)
+
 def load_texture(path):
     img = Image.open(path).convert('RGBA')
     img_data = np.array(img)[::-1]
@@ -469,7 +568,7 @@ def main():
     prog = link_program(VERT_SHADER, FRAG_SHADER)
     depth_prog = link_program(DEPTH_VS, DEPTH_FS)
     flower_prog = link_program(FLOWER_VERT_SHADER, FLOWER_FRAG_SHADER)
-    sun_prog = link_program(SUN_VERT_SHADER, SUN_FRAG_SHADER)  # Шейдер для солнца
+    sun_prog = link_program(SUN_VERT_SHADER, SUN_FRAG_SHADER)
 
     # создать меши
     plane_data = create_plane(80.0, uv_scale=30.0)
@@ -488,6 +587,10 @@ def main():
     flower_vao, _, flower_count = make_vao(flower_data)
     curved_road_data = create_curved_road(length=40.0, width=3.0, curve_radius=25.0, segments=64)
     curved_road_vao, _, curved_road_count = make_vao(curved_road_data)
+    rectangular_window_data = create_rectangular_window(1.0, 1.0, 0.08)
+    rectangular_window_vao, _, rectangular_window_count = make_vao(rectangular_window_data)
+    half_cyl_data = create_half_cylinder_with_caps(64)
+    half_cyl_vao, _, half_cyl_count = make_vao(half_cyl_data)
 
     # текстуры
     texdir = os.path.join(os.path.dirname(__file__), 'textures')
@@ -506,6 +609,7 @@ def main():
     tex_wood = load_texture(os.path.join(texdir, 'wood.png'))
     tex_metal = load_texture(os.path.join(texdir, 'metal.png'))
     tex_metal_house = load_texture(os.path.join(texdir, 'metal_house.png'))
+    tex_krusty_krab = load_texture(os.path.join(texdir, 'krusty_krab.png'))
     
     def create_color_texture(r, g, b, a=1.0):
         data = np.array([[int(r*255), int(g*255), int(b*255), int(a*255)]], dtype=np.uint8)
@@ -518,6 +622,7 @@ def main():
     
     tex_window_blue = create_color_texture(0.5, 0.7, 1.0)
     tex_window_frame = create_color_texture(0.2, 0.3, 0.8)
+    tex_glass_door = create_color_texture(0.7, 0.9, 1.0, 0.8)  # Стеклянная дверь
 
     # теневой фреймбуфер
     SHADOW_W, SHADOW_H = 4096, 4096 
@@ -573,13 +678,14 @@ def main():
     glfw.set_cursor_pos_callback(window, cursor_pos)
 
     # свет - позиция для солнца в небе
-    light_pos = glm.vec3(40.0, 80.0, 40.0)  # Высоко в небе
+    light_pos = glm.vec3(40.0, 80.0, 40.0)
 
     # позиции домиков
     line_z = 0.0
     pos_patrick = glm.vec3(-8.0, 0.0, line_z)
     pos_squid = glm.vec3(0.0, 0.0, line_z)
     pos_sponge = glm.vec3(8.0, 0.0, line_z)
+    pos_krusty_krab = glm.vec3(50.0, 0.0, line_z)
     
     # Позиции для цветков в небе
     flower_positions = []
@@ -757,10 +863,39 @@ def main():
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(door_frame_model))
             glBindVertexArray(window_frame_vao); glDrawArrays(GL_TRIANGLES,0,window_frame_count)
             
+            # Красти Крабс - форма сундука
+            # Основное здание (сундук)
+            krusty_krab_base = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 2.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(6.0, 4.0, 5.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(krusty_krab_base))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            # Крышка сундука (полуцилиндр с закрытыми боками)
+            krusty_krab_lid = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 4.0, 0.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1.0, 0.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(6.0, 2.5, 5.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(krusty_krab_lid))
+            glBindVertexArray(half_cyl_vao); glDrawArrays(GL_TRIANGLES,0,half_cyl_count)
+
+            # Труба на крыше (ПОНИЖЕННАЯ И УМЕНЬШЕННАЯ)
+            krusty_krab_chimney = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(2.0, 5.0, -1.5)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6, 1.2, 0.6))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(krusty_krab_chimney))
+            glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
+
+            # Большие прямоугольные окна (ПЕРЕМЕЩЕНЫ НА ЗДАНИЕ)
+            window1_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-1.8, 3.0, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 1.5, 0.5))
+            window2_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(1.8, 3.0, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 1.5, 0.5))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(window1_krab))
+            glBindVertexArray(rectangular_window_vao); glDrawArrays(GL_TRIANGLES,0,rectangular_window_count)
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(window2_krab))
+            glBindVertexArray(rectangular_window_vao); glDrawArrays(GL_TRIANGLES,0,rectangular_window_count)
+
+            # Стеклянная дверь (ПЕРЕМЕЩЕНА НА ЗДАНИЕ)
+            door_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 2.0, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.5, 2.5, 0.1))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(door_krab))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
             # Домики обычных жителей
             for i, house_pos in enumerate(house_positions):
                 random_height_bonus = random_height_bonuses[i]
-                
+
                 # Тело домика
                 model_house = glm.translate(glm.mat4(1.0), house_pos) * glm.scale(glm.mat4(1.0), glm.vec3(2.0, 10.0 + random_height_bonus, 2.0))
                 glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_house))
@@ -853,6 +988,35 @@ def main():
         # Дорога до Красти Крабс
         road_to_krusty_krabs = glm.translate(glm.mat4(1.0), glm.vec3(40.0, 0.0, 8.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
         draw_textured(cube_vao, cube_count, tex_road, road_to_krusty_krabs, 16.0)
+
+        # Красти Крабс - форма сундука
+        # Основное здание (сундук)
+        krusty_krab_base = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 0.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(7.0, 5.0, 5.0))
+        draw_textured(cube_vao, cube_count, tex_krusty_krab, krusty_krab_base, 32.0)
+
+        # Крышка сундука (полуцилиндр с закрытыми боками)
+        krusty_krab_lid = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 2.5, 0.0)) * glm.rotate(glm.mat4(1.0), glm.radians(-90.0), glm.vec3(1.0, 0.0, 0.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0.0, 0.0, 1.0))  * glm.scale(glm.mat4(1.0), glm.vec3(5.0, 7.0, 5.0))
+        draw_textured(half_cyl_vao, half_cyl_count, tex_krusty_krab, krusty_krab_lid, 32.0)
+
+        # Труба на крыше 
+        krusty_krab_chimney = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 5.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6, 2.0, 0.6))
+        draw_textured(cyl_vao, cyl_count, tex_metal, krusty_krab_chimney, 32.0)
+
+        # Большие прямоугольные окна (рамки)
+        window1_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-2.0, 1.4, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.95, 1.7, 0.5))
+        window2_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(2.0, 1.4, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.95, 1.7, 0.5))
+        draw_textured(rectangular_window_vao, rectangular_window_count, tex_window_frame, window1_krab, 64.0)
+        draw_textured(rectangular_window_vao, rectangular_window_count, tex_window_frame, window2_krab, 64.0)
+
+        # Стекла окон
+        window_glass1_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-2.0, 1.4, 2.52)) * glm.scale(glm.mat4(1.0), glm.vec3(1.9, 1.65, 0.1))
+        window_glass2_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(2.0, 1.4, 2.52)) * glm.scale(glm.mat4(1.0), glm.vec3(1.9, 1.65, 0.1))
+        draw_textured(cube_vao, cube_count, tex_window_blue, window_glass1_krab, 64.0)
+        draw_textured(cube_vao, cube_count, tex_window_blue, window_glass2_krab, 64.0)
+
+        # Стеклянная дверь
+        door_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 1.0, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.5, 2.0, 0.1))
+        draw_textured(cube_vao, cube_count, tex_glass_door, door_krab, 64.0)
 
         # Домики обычных жителей 
         for i, house_pos in enumerate(house_positions):
