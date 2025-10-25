@@ -512,6 +512,139 @@ def create_half_cylinder_with_caps(segments=64):
     
     return np.array(verts, dtype=np.float32)
 
+def create_sign_post(height=4.0, radius=0.05):
+    """Создает столб для вывески"""
+    verts = []
+    segments = 16
+    for i in range(segments):
+        a0 = 2*np.pi*i/segments
+        a1 = 2*np.pi*(i+1)/segments
+        p0 = (radius*np.cos(a0), -height/2, radius*np.sin(a0))
+        p1 = (radius*np.cos(a1), -height/2, radius*np.sin(a1))
+        p2 = (radius*np.cos(a0), height/2, radius*np.sin(a0))
+        p3 = (radius*np.cos(a1), height/2, radius*np.sin(a1))
+        n0 = (np.cos(a0),0,np.sin(a0))
+        n1 = (np.cos(a1),0,np.sin(a1))
+        verts.extend([*p0,*n0, i/segments,0])
+        verts.extend([*p2,*n0, i/segments,1])
+        verts.extend([*p1,*n1, (i+1)/segments,0])
+        verts.extend([*p2,*n0, i/segments,1])
+        verts.extend([*p3,*n1, (i+1)/segments,1])
+        verts.extend([*p1,*n1, (i+1)/segments,0])
+    return np.array(verts, dtype=np.float32)
+
+def create_shell_sign(width=2.0, height=1.0, curvature=0.3):
+    """Создает вывеску в форме ракушки"""
+    verts = []
+    segments = 32
+    for i in range(segments):
+        u0 = i / segments
+        u1 = (i + 1) / segments
+        for j in range(segments//2):
+            v0 = j / (segments//2)
+            v1 = (j + 1) / (segments//2)
+            
+            # Параметрическая поверхность для ракушки
+            x0 = (u0 - 0.5) * width
+            z0 = (v0 - 0.5) * height
+            y0 = curvature * np.sin(u0 * np.pi) * np.sin(v0 * np.pi)
+            
+            x1 = (u1 - 0.5) * width
+            z1 = (v0 - 0.5) * height
+            y1 = curvature * np.sin(u1 * np.pi) * np.sin(v0 * np.pi)
+            
+            x2 = (u0 - 0.5) * width
+            z2 = (v1 - 0.5) * height
+            y2 = curvature * np.sin(u0 * np.pi) * np.sin(v1 * np.pi)
+            
+            x3 = (u1 - 0.5) * width
+            z3 = (v1 - 0.5) * height
+            y3 = curvature * np.sin(u1 * np.pi) * np.sin(v1 * np.pi)
+            
+            # Нормали (упрощенные)
+            normal = (0, 1, 0)
+            
+            verts.extend([x0, y0, z0, *normal, u0, v0])
+            verts.extend([x1, y1, z1, *normal, u1, v0])
+            verts.extend([x2, y2, z2, *normal, u0, v1])
+            
+            verts.extend([x1, y1, z1, *normal, u1, v0])
+            verts.extend([x3, y3, z3, *normal, u1, v1])
+            verts.extend([x2, y2, z2, *normal, u0, v1])
+    
+    return np.array(verts, dtype=np.float32)
+
+def create_flag(width=0.8, height=0.5):
+    verts = []
+    # Прямоугольный флажок
+    coords = [
+        (0, 0, 0), (width, 0, 0), (width, height, 0),
+        (0, 0, 0), (width, height, 0), (0, height, 0)
+    ]
+    tex_coords = [
+        (0, 0), (1, 0), (1, 1),
+        (0, 0), (1, 1), (0, 1)
+    ]
+    normal = (0, 0, 1)
+    for i in range(6):
+        verts.extend([*coords[i], *normal, *tex_coords[i]])
+    return np.array(verts, dtype=np.float32)
+
+
+def create_rope(length=10.0, segments=32, sag=0.8):
+    """Создает веревку для гирлянды"""
+    verts = []
+    radius = 0.06
+    half_len = length / 2
+    
+    for i in range(segments):
+        a0 = 2*np.pi*i/segments
+        a1 = 2*np.pi*(i+1)/segments
+        
+        # Параболическое провисание
+        x0 = -half_len + (i/segments)*length
+        x1 = -half_len + ((i+1)/segments)*length
+        
+        # Парабола: y = a*x^2 + c, где a = -4*sag/length^2
+        a = -4 * sag / (length * length)
+        y0 = a * x0 * x0 + sag
+        y1 = a * x1 * x1 + sag
+        
+        # Точки для окружности веревки
+        p0 = (x0, y0, radius*np.cos(a0))
+        p1 = (x1, y1, radius*np.cos(a1))
+        p2 = (x0, y0, radius*np.sin(a0))
+        p3 = (x1, y1, radius*np.sin(a1))
+        
+        # Нормали (аппроксимация)
+        tangent_x = x1 - x0
+        tangent_y = y1 - y0
+        tangent_len = np.sqrt(tangent_x*tangent_x + tangent_y*tangent_y)
+        if tangent_len > 0:
+            tangent_x /= tangent_len
+            tangent_y /= tangent_len
+        normal_x = -tangent_y
+        normal_y = tangent_x
+        
+        n0 = (normal_x*np.cos(a0), normal_y*np.cos(a0), np.sin(a0))
+        n1 = (normal_x*np.cos(a1), normal_y*np.cos(a1), np.sin(a1))
+        
+        verts.extend([*p0,*n0, i/segments,0])
+        verts.extend([*p2,*n0, i/segments,1])
+        verts.extend([*p1,*n1, (i+1)/segments,0])
+        verts.extend([*p2,*n0, i/segments,1])
+        verts.extend([*p3,*n1, (i+1)/segments,1])
+        verts.extend([*p1,*n1, (i+1)/segments,0])
+    
+    return np.array(verts, dtype=np.float32)
+
+def get_parabolic_position(x, length=10.0, sag=0.8):
+    """Вычисляет позицию на параболической веревке"""
+    half_len = length / 2
+    a = -4 * sag / (length * length)
+    y = a * x * x + sag
+    return y
+
 def load_texture(path):
     img = Image.open(path).convert('RGBA')
     img_data = np.array(img)[::-1]
@@ -591,6 +724,14 @@ def main():
     rectangular_window_vao, _, rectangular_window_count = make_vao(rectangular_window_data)
     half_cyl_data = create_half_cylinder_with_caps(64)
     half_cyl_vao, _, half_cyl_count = make_vao(half_cyl_data)
+    sign_post_data = create_sign_post()
+    sign_post_vao, _, sign_post_count = make_vao(sign_post_data)
+    shell_sign_data = create_shell_sign()
+    shell_sign_vao, _, shell_sign_count = make_vao(shell_sign_data)
+    flag_data = create_flag()
+    flag_vao, _, flag_count = make_vao(flag_data)
+    rope_data = create_rope(length=10.0, segments=64, sag=1.2)
+    rope_vao, _, rope_count = make_vao(rope_data)
 
     # текстуры
     texdir = os.path.join(os.path.dirname(__file__), 'textures')
@@ -624,6 +765,70 @@ def main():
     tex_window_frame = create_color_texture(0.2, 0.3, 0.8)
     tex_glass_door = create_color_texture(0.7, 0.9, 1.0, 0.8)  # Стеклянная дверь
     tex_gold = create_color_texture(0.9, 0.7, 0.1)  # Золотистый цвет
+    tex_shell = create_color_texture(1.0, 0.9, 0.8)     # Светлый цвет ракушки
+
+    # Создаем текстуру с текстом "The Krusty Krab"
+    def create_text_texture(text, width=256, height=64, font_size=32):
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            
+            # Создаем изображение
+            img = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+            draw = ImageDraw.Draw(img)
+            
+            # Пытаемся использовать шрифт Arial, если нет - используем стандартный
+            try:
+                font = ImageFont.truetype("arial.ttf", font_size)
+            except:
+                try:
+                    font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+                except:
+                    font = ImageFont.load_default()
+            
+            # Получаем размеры текста
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            
+            # Центрируем текст
+            x = (width - text_width) // 2
+            y = (height - text_height) // 2
+            
+            # Рисуем текст красным цветом
+            draw.text((x, y), text, font=font, fill=(255, 0, 0, 255))
+            
+            # Конвертируем в numpy массив
+            img_data = np.array(img)[::-1]
+            
+            # Создаем текстуру
+            tex = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, tex)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
+            glGenerateMipmap(GL_TEXTURE_2D)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            
+            return tex
+        except Exception as e:
+            print(f"Failed to create text texture: {e}")
+            # Возвращаем простую красную текстуру в случае ошибки
+            return create_color_texture(1.0, 0.0, 0.0)
+    
+    tex_sign_text = create_text_texture("        The\nKRUSTY KRAB", width=512, height=128, font_size=48)
+
+    # Цвета флажков: красный, желтый, синий (чередуются)
+    flag_colors = [
+        create_color_texture(1.0, 0.0, 0.0),   # Красный
+        create_color_texture(1.0, 1.0, 0.0),   # Желтый
+        create_color_texture(0.0, 0.0, 1.0),   # Синий
+        create_color_texture(1.0, 0.0, 0.0),   # Красный
+        create_color_texture(1.0, 1.0, 0.0),   # Желтый
+        create_color_texture(0.0, 0.0, 1.0),   # Синий
+    ]
+    
+    tex_rope = create_color_texture(0.5, 0.4, 0.3)  # Цвет веревки
 
     # теневой фреймбуфер
     SHADOW_W, SHADOW_H = 4096, 4096 
@@ -915,6 +1120,38 @@ def main():
             glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(foundation_right))
             glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+
+            # Вывеска "Krusty Krab"
+            sign_post_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.0, 0.0, 4.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 1.0, 1.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(sign_post_model))
+            glBindVertexArray(sign_post_vao); glDrawArrays(GL_TRIANGLES,0,sign_post_count)
+            
+            shell_sign_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.0, 2.5, 4.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 0.8, 1.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(shell_sign_model))
+            glBindVertexArray(shell_sign_vao); glDrawArrays(GL_TRIANGLES,0,shell_sign_count)
+            
+            # Гирлянда флажков с параболической веревкой
+            rope_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 0.0, 4.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(rope_model))
+            glBindVertexArray(rope_vao); glDrawArrays(GL_TRIANGLES,0,rope_count)
+            
+            # Флажки (прямоугольные) с поворотом по касательной к веревке
+            flag_positions = [
+                glm.vec3(-3.3, 3.35, 2.4),   # первый флаг
+                glm.vec3(-2.1, 3.45, 2.4),   # второй  
+                glm.vec3(-0.9, 3.55, 2.4),   # третий
+                glm.vec3(0.3, 3.45, 2.4),    # четвертый
+                glm.vec3(1.5, 3.35, 2.4),    # пятый
+                glm.vec3(2.7, 3.25, 2.4)     # шестой
+            ]
+            
+            for i, flag_pos in enumerate(flag_positions):
+                flag_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + flag_pos) * \
+                        glm.rotate(glm.mat4(1.0), glm.radians(-30.0), glm.vec3(1,0,0)) * \
+                        glm.rotate(glm.mat4(1.0), glm.radians(-25.0), glm.vec3(0,0,1))
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(flag_model))
+                glBindVertexArray(flag_vao); glDrawArrays(GL_TRIANGLES,0,flag_count)
+        
             
             # Домики обычных жителей
             for i, house_pos in enumerate(house_positions):
@@ -1062,6 +1299,58 @@ def main():
         draw_textured(cube_vao, cube_count, tex_krusty_krab, foundation_back, 24.0)
         draw_textured(cube_vao, cube_count, tex_krusty_krab, foundation_left, 24.0)
         draw_textured(cube_vao, cube_count, tex_krusty_krab, foundation_right, 24.0)
+
+        # ---- Вывеска "The Krusty Krab" ----
+        # Столб вывески
+        sign_post_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 0.0, 5.28)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 2.8, 1.0))
+        draw_textured(sign_post_vao, sign_post_count, tex_wood, sign_post_model, 24.0)
+        
+        # Ракушка-вывеска
+        shell_sign_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 5.45, 5.57)) * glm.rotate(glm.mat4(1.0), glm.radians(-90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 1.0, 1.0)) 
+        draw_textured(shell_sign_vao, shell_sign_count, tex_shell, shell_sign_model, 32.0)
+        
+        # Текст "The Krusty Krab" 
+        sign_text_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 5.45, 5.58)) * glm.scale(glm.mat4(1.0), glm.vec3(2.5, 1.1, 0.01))
+        draw_textured(cube_vao, cube_count, tex_sign_text, sign_text_model, 64.0)
+        
+        rope_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 4.0, 2.0)) * glm.rotate(glm.mat4(1.0), glm.radians(145.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.7, 1.0, 1.0)) 
+        draw_textured(rope_vao, rope_count, tex_rope, rope_model, 24.0)
+        
+        # Все флажки
+        flag_positions = [
+            glm.vec3(-3.3, 3.35, 2.4),  
+            glm.vec3(-2.1, 2.87, 2.65),  
+            glm.vec3(-0.9, 2.63, 2.78),  
+            glm.vec3(0.4, 2.6, 2.8),   
+            glm.vec3(1.6, 2.72, 2.72),   
+            glm.vec3(2.65, 3.15, 2.57)     
+        ]
+        
+        flag_model1 = glm.translate(glm.mat4(1.0), pos_krusty_krab + flag_positions[0]) * \
+                       glm.rotate(glm.mat4(1.0), glm.radians(-30.0), glm.vec3(1,0,0)) * \
+                       glm.rotate(glm.mat4(1.0), glm.radians(-25.0), glm.vec3(0,0,1)) 
+        draw_textured(flag_vao, flag_count, flag_colors[0], flag_model1, 32.0)
+        flag_model2 = glm.translate(glm.mat4(1.0), pos_krusty_krab + flag_positions[1]) * \
+                       glm.rotate(glm.mat4(1.0), glm.radians(-30.0), glm.vec3(1,0,0)) * \
+                       glm.rotate(glm.mat4(1.0), glm.radians(-17.0), glm.vec3(0,0,1)) 
+        draw_textured(flag_vao, flag_count, flag_colors[1], flag_model2, 32.0)   
+        flag_model3 = glm.translate(glm.mat4(1.0), pos_krusty_krab + flag_positions[2]) * \
+                       glm.rotate(glm.mat4(1.0), glm.radians(-30.0), glm.vec3(1,0,0)) * \
+                       glm.rotate(glm.mat4(1.0), glm.radians(-5.0), glm.vec3(0,0,1)) 
+        draw_textured(flag_vao, flag_count, flag_colors[2], flag_model3, 32.0)  
+        flag_model4 = glm.translate(glm.mat4(1.0), pos_krusty_krab + flag_positions[3]) * \
+                       glm.rotate(glm.mat4(1.0), glm.radians(-30.0), glm.vec3(1,0,0)) * \
+                       glm.rotate(glm.mat4(1.0), glm.radians(5.0), glm.vec3(0,0,1)) 
+        draw_textured(flag_vao, flag_count, flag_colors[3], flag_model4, 32.0) 
+        flag_model5 = glm.translate(glm.mat4(1.0), pos_krusty_krab + flag_positions[4]) * \
+                       glm.rotate(glm.mat4(1.0), glm.radians(-30.0), glm.vec3(1,0,0)) * \
+                       glm.rotate(glm.mat4(1.0), glm.radians(17.0), glm.vec3(0,0,1)) 
+        draw_textured(flag_vao, flag_count, flag_colors[4], flag_model5, 32.0) 
+        flag_model6 = glm.translate(glm.mat4(1.0), pos_krusty_krab + flag_positions[5]) * \
+                       glm.rotate(glm.mat4(1.0), glm.radians(-30.0), glm.vec3(1,0,0)) * \
+                       glm.rotate(glm.mat4(1.0), glm.radians(25.0), glm.vec3(0,0,1)) 
+        draw_textured(flag_vao, flag_count, flag_colors[5], flag_model6, 32.0) 
+
 
         # Домики обычных жителей 
         for i, house_pos in enumerate(house_positions):
