@@ -623,6 +623,7 @@ def main():
     tex_window_blue = create_color_texture(0.5, 0.7, 1.0)
     tex_window_frame = create_color_texture(0.2, 0.3, 0.8)
     tex_glass_door = create_color_texture(0.7, 0.9, 1.0, 0.8)  # Стеклянная дверь
+    tex_gold = create_color_texture(0.9, 0.7, 0.1)  # Золотистый цвет
 
     # теневой фреймбуфер
     SHADOW_W, SHADOW_H = 4096, 4096 
@@ -874,12 +875,12 @@ def main():
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(krusty_krab_lid))
             glBindVertexArray(half_cyl_vao); glDrawArrays(GL_TRIANGLES,0,half_cyl_count)
 
-            # Труба на крыше (ПОНИЖЕННАЯ И УМЕНЬШЕННАЯ)
+            # Труба на крыше 
             krusty_krab_chimney = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(2.0, 5.0, -1.5)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6, 1.2, 0.6))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(krusty_krab_chimney))
             glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
 
-            # Большие прямоугольные окна (ПЕРЕМЕЩЕНЫ НА ЗДАНИЕ)
+            # Большие прямоугольные окна 
             window1_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-1.8, 3.0, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 1.5, 0.5))
             window2_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(1.8, 3.0, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 1.5, 0.5))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(window1_krab))
@@ -890,6 +891,29 @@ def main():
             # Стеклянная дверь (ПЕРЕМЕЩЕНА НА ЗДАНИЕ)
             door_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 2.0, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.5, 2.5, 0.1))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(door_krab))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+
+            # Ручки двери
+            door_handle_left = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-0.5, 1.0, 2.55)) * glm.scale(glm.mat4(1.0), glm.vec3(0.05, 0.2, 0.05))
+            door_handle_right = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.5, 1.0, 2.55)) * glm.scale(glm.mat4(1.0), glm.vec3(0.05, 0.2, 0.05))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(door_handle_left))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(door_handle_right))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+
+            # Основание
+            foundation_front = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, -2.0, 2.6)) * glm.scale(glm.mat4(1.0), glm.vec3(7.2, 0.3, 0.3))
+            foundation_back = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, -2.0, -2.6)) * glm.scale(glm.mat4(1.0), glm.vec3(7.2, 0.3, 0.3))
+            foundation_left = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.6, -2.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.3, 0.3, 5.2))
+            foundation_right = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(3.6, -2.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.3, 0.3, 5.2))
+
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(foundation_front))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(foundation_back))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(foundation_left))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(foundation_right))
             glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
             
             # Домики обычных жителей
@@ -977,7 +1001,7 @@ def main():
         road_main = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, 8.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
         draw_textured(cube_vao, cube_count, tex_road, road_main, 16.0)
 
-        # Изогнутая дорога
+        # Изогнутая дорога влево
         curved_road_model = glm.mat4(1.0)
         draw_textured(curved_road_vao, curved_road_count, tex_road, curved_road_model, 16.0)
 
@@ -985,9 +1009,17 @@ def main():
         road_next = glm.translate(glm.mat4(1.0), glm.vec3(-45.0, 0.0, 53.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
         draw_textured(cube_vao, cube_count, tex_road, road_next, 16.0)
 
-        # Дорога до Красти Крабс
-        road_to_krusty_krabs = glm.translate(glm.mat4(1.0), glm.vec3(40.0, 0.0, 8.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
+        # Дорога вправо
+        road_to_right = glm.translate(glm.mat4(1.0), glm.vec3(40.0, 0.0, 8.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
+        draw_textured(cube_vao, cube_count, tex_road, road_to_right, 16.0)
+
+        # Дорога до красти краба
+        road_to_krusty_krabs = glm.translate(glm.mat4(1.0), glm.vec3(50.0, 0.0, 5.75)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.5, 0.01, 1.5))
         draw_textured(cube_vao, cube_count, tex_road, road_to_krusty_krabs, 16.0)
+
+        # Асфальт под красти крабом
+        under_krusty_krabs = glm.translate(glm.mat4(1.0), glm.vec3(50.0, 0.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(12.0, 0.01, 10.0))
+        draw_textured(cube_vao, cube_count, tex_road, under_krusty_krabs, 16.0)
 
         # Красти Крабс - форма сундука
         # Основное здание (сундук)
@@ -1002,12 +1034,6 @@ def main():
         krusty_krab_chimney = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 5.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6, 2.0, 0.6))
         draw_textured(cyl_vao, cyl_count, tex_metal, krusty_krab_chimney, 32.0)
 
-        # Большие прямоугольные окна (рамки)
-        window1_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-2.0, 1.4, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.95, 1.7, 0.5))
-        window2_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(2.0, 1.4, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.95, 1.7, 0.5))
-        draw_textured(rectangular_window_vao, rectangular_window_count, tex_window_frame, window1_krab, 64.0)
-        draw_textured(rectangular_window_vao, rectangular_window_count, tex_window_frame, window2_krab, 64.0)
-
         # Стекла окон
         window_glass1_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-2.0, 1.4, 2.52)) * glm.scale(glm.mat4(1.0), glm.vec3(1.9, 1.65, 0.1))
         window_glass2_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(2.0, 1.4, 2.52)) * glm.scale(glm.mat4(1.0), glm.vec3(1.9, 1.65, 0.1))
@@ -1017,6 +1043,25 @@ def main():
         # Стеклянная дверь
         door_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 1.0, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.5, 2.0, 0.1))
         draw_textured(cube_vao, cube_count, tex_glass_door, door_krab, 64.0)
+
+        # 1) Ручки для стеклянной двери (золотистые)
+        door_handle_left = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-0.1, 1.0, 2.55)) * glm.scale(glm.mat4(1.0), glm.vec3(0.05, 0.2, 0.05))
+        door_handle_right = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.1, 1.0, 2.55)) * glm.scale(glm.mat4(1.0), glm.vec3(0.05, 0.2, 0.05))
+        draw_textured(cube_vao, cube_count, tex_gold, door_handle_left, 64.0)
+        draw_textured(cube_vao, cube_count, tex_gold, door_handle_right, 64.0)
+
+        # 2) Деревянное основание внизу Красти Крабс
+        foundation_front1 = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-2.3, 0.25, 2.6)) * glm.scale(glm.mat4(1.0), glm.vec3(2.9, 0.5, 0.3))
+        foundation_front2 = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(2.3, 0.25, 2.6)) * glm.scale(glm.mat4(1.0), glm.vec3(2.9, 0.5, 0.3))
+        foundation_back = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 0.25, -2.6)) * glm.scale(glm.mat4(1.0), glm.vec3(7.5, 0.5, 0.3))
+        foundation_left = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.6, 0.25, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.3, 0.5, 4.9))
+        foundation_right = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(3.6, 0.25, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.3, 0.5, 4.9))
+
+        draw_textured(cube_vao, cube_count, tex_krusty_krab, foundation_front1, 24.0)
+        draw_textured(cube_vao, cube_count, tex_krusty_krab, foundation_front2, 24.0)
+        draw_textured(cube_vao, cube_count, tex_krusty_krab, foundation_back, 24.0)
+        draw_textured(cube_vao, cube_count, tex_krusty_krab, foundation_left, 24.0)
+        draw_textured(cube_vao, cube_count, tex_krusty_krab, foundation_right, 24.0)
 
         # Домики обычных жителей 
         for i, house_pos in enumerate(house_positions):
