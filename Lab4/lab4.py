@@ -792,6 +792,32 @@ def create_thumb(scale=1.0):
     
     return np.array(verts, dtype=np.float32)
 
+def create_hemisphere(radius=1.0, segments=16):
+    """Создает полусферу для камней"""
+    verts = []
+    
+    for i in range(segments//2):
+        theta1 = np.pi * i / segments
+        theta2 = np.pi * (i+1) / segments
+        for j in range(segments):
+            phi1 = 2*np.pi * j / segments
+            phi2 = 2*np.pi * (j+1) / segments
+            
+            # Точки для полусферы (только верхняя половина)
+            p1 = (radius*np.sin(theta1)*np.cos(phi1), radius*np.cos(theta1), radius*np.sin(theta1)*np.sin(phi1))
+            p2 = (radius*np.sin(theta2)*np.cos(phi1), radius*np.cos(theta2), radius*np.sin(theta2)*np.sin(phi1))
+            p3 = (radius*np.sin(theta1)*np.cos(phi2), radius*np.cos(theta1), radius*np.sin(theta1)*np.sin(phi2))
+            p4 = (radius*np.sin(theta2)*np.cos(phi2), radius*np.cos(theta2), radius*np.sin(theta2)*np.sin(phi2))
+            
+            verts.extend([*p1,*p1, j/segments, i/segments])
+            verts.extend([*p2,*p2, j/segments, (i+1)/segments])
+            verts.extend([*p3,*p3, (j+1)/segments, i/segments])
+            verts.extend([*p3,*p3, (j+1)/segments, i/segments])
+            verts.extend([*p2,*p2, j/segments, (i+1)/segments])
+            verts.extend([*p4,*p4, (j+1)/segments, (i+1)/segments])
+    
+    return np.array(verts, dtype=np.float32)
+
 def load_texture(path):
     img = Image.open(path).convert('RGBA')
     img_data = np.array(img)[::-1]
@@ -809,8 +835,6 @@ def load_texture(path):
     except Exception:
         pass
     return tex
-
-# ---------- GL буферы/VAO ----------
 
 def make_vao(data, stride_elems=8):
     vao = glGenVertexArrays(1)
@@ -879,8 +903,8 @@ def main():
     flag_vao, _, flag_count = make_vao(flag_data)
     rope_data = create_rope(length=10.0, segments=64, sag=1.2)
     rope_vao, _, rope_count = make_vao(rope_data)
-    
-    # Новые меши для Chum Bucket
+    rock_data = create_hemisphere(radius=1.0, segments=16)
+    rock_vao, _, rock_count = make_vao(rock_data)
     bucket_data = create_bucket(height=3.0, bottom_radius=1.5, top_radius=2.0, segments=32)
     bucket_vao, _, bucket_count = make_vao(bucket_data)
     bucket_lid_data = create_bucket_lid(radius=2.2, thickness=0.3, segments=32)
@@ -910,6 +934,7 @@ def main():
     tex_metal = load_texture(os.path.join(texdir, 'metal.png'))
     tex_metal_house = load_texture(os.path.join(texdir, 'metal_house.png'))
     tex_krusty_krab = load_texture(os.path.join(texdir, 'krusty_krab.png'))
+    tex_rock_dec = load_texture(os.path.join(texdir, 'rock_dec.png'))
     
     def create_color_texture(r, g, b, a=1.0):
         data = np.array([[int(r*255), int(g*255), int(b*255), int(a*255)]], dtype=np.uint8)
@@ -1130,6 +1155,17 @@ def main():
     # случайная текстура домика
     random_texture_for_houses = [tex_metal_house if random.randint(0,1) == 1 else tex_metal for _ in range(len(house_positions))]
     
+    # Генерируем позиции для декораций ТОЛЬКО в области z <= -10
+    rock_positions = []
+
+    # Генерация камней (17 штук)
+    for _ in range(17):
+        x = random.uniform(-75, 75)
+        z = random.uniform(-75, -10) 
+        scale = random.uniform(0.2, 0.6)
+        rotation = random.uniform(0, 360)
+        rock_positions.append((glm.vec3(x, 0.0, z), scale, rotation))
+
     def process_movement(delta):
         nonlocal cam_pos
         speed = movement_speed * delta
@@ -1339,7 +1375,7 @@ def main():
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(foundation_right))
             glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
 
-           # Вывеска "Krusty Krab" - ИСПРАВЛЕННЫЕ МАСШТАБЫ И ПОЗИЦИИ
+           # Вывеска "Krusty Krab"
             sign_post_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 0.0, 5.28)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 2.8, 1.0))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(sign_post_model))
             glBindVertexArray(sign_post_vao); glDrawArrays(GL_TRIANGLES,0,sign_post_count)
@@ -1837,7 +1873,14 @@ def main():
         # Рамка вокруг двери Спанчбоба (изогнутая, повторяет форму полуэллипса)
         door_frame_model = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.0, 0.0, 1.45)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 2.2, 0.8))
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, door_frame_model, 64.0)
-        
+
+        # Рендер камней (полусферы)
+        for pos, scale, rotation in rock_positions:
+            model = glm.translate(glm.mat4(1.0), pos)
+            model = glm.rotate(model, glm.radians(rotation), glm.vec3(0, 1, 0))
+            model = glm.scale(model, glm.vec3(scale, scale * 0.6, scale))  # Слегка сплюснутые
+            draw_textured(rock_vao, rock_count, tex_rock_dec, model, 8.0)
+    
         # Рендер солнца (после всех непрозрачных объектов, но до полупрозрачных)
         glUseProgram(sun_prog)
         glUniformMatrix4fv(glGetUniformLocation(sun_prog, 'view'), 1, GL_FALSE, glm.value_ptr(view))
