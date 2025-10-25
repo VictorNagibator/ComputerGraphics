@@ -55,10 +55,10 @@ float ShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir){
     if(projCoords.z > 1.0) return 0.0;
     float closestDepth = texture(shadowMap, projCoords.xy).r;
     float currentDepth = projCoords.z;
-    float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);  // Увеличил bias для лучших результатов
+    float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-    for(int x=-2;x<=2;x++){  // Увеличил радиус PCF для сглаживания
+    for(int x=-2;x<=2;x++){
         for(int y=-2;y<=2;y++){
             float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x,y)*texelSize).r;
             shadow += (currentDepth - bias > pcfDepth) ? 1.0 : 0.0;
@@ -72,7 +72,7 @@ void main(){
     vec3 color = texture(texture_diffuse1, TexCoord).rgb;
     vec3 normal = normalize(Normal);
     vec3 lightColor = vec3(1.0);
-    vec3 ambient = 0.3 * color;  // Увеличил ambient для лучшей видимости в тенях
+    vec3 ambient = 0.3 * color;
     vec3 lightDir = normalize(lightPos - FragPos);
     float diff = max(dot(normal, lightDir), 0.0);
     vec3 diffuse = diff * color;
@@ -113,6 +113,69 @@ void main(){
     if(texColor.a < 0.1)
         discard;
     FragColor = texColor;
+}
+"""
+
+SUN_VERT_SHADER = """#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
+layout (location = 2) in vec2 aTex;
+
+out vec3 FragPos;
+out vec3 Normal;
+out vec2 TexCoord;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+
+void main(){
+    FragPos = vec3(model * vec4(aPos, 1.0));
+    Normal = mat3(transpose(inverse(model))) * aNormal;
+    TexCoord = aTex;
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+}
+"""
+
+SUN_FRAG_SHADER = """#version 330 core
+in vec3 FragPos;
+in vec3 Normal;
+in vec2 TexCoord;
+
+out vec4 FragColor;
+
+uniform vec3 sunPos;
+uniform vec3 viewPos;
+
+void main(){
+    // Основной цвет солнца - ярко-желтый
+    vec3 sunColor = vec3(1.0, 0.9, 0.4);
+    
+    // Вычисляем нормаль и направление к камере
+    vec3 norm = normalize(Normal);
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 lightDir = normalize(sunPos - FragPos);
+    
+    // Яркое ядро солнца
+    float coreIntensity = 2.0;
+    vec3 coreColor = sunColor * coreIntensity;
+    
+    // Эффект блика - когда смотрим почти прямо на солнце
+    float spec = pow(max(dot(viewDir, lightDir), 0.0), 128.0);
+    vec3 glare = vec3(1.0, 1.0, 0.8) * spec * 3.0;
+    
+    // Рассеянное свечение вокруг солнца
+    float glow = 1.0 - dot(norm, viewDir);
+    glow = pow(glow, 2.0);
+    vec3 glowColor = vec3(1.0, 0.7, 0.3) * glow * 1.5;
+    
+    // Комбинируем все эффекты
+    vec3 finalColor = coreColor + glare + glowColor;
+    
+    // Усиливаем интенсивность
+    finalColor *= 2.0;
+    
+    FragColor = vec4(finalColor, 1.0);
 }
 """
 
@@ -406,6 +469,7 @@ def main():
     prog = link_program(VERT_SHADER, FRAG_SHADER)
     depth_prog = link_program(DEPTH_VS, DEPTH_FS)
     flower_prog = link_program(FLOWER_VERT_SHADER, FLOWER_FRAG_SHADER)
+    sun_prog = link_program(SUN_VERT_SHADER, SUN_FRAG_SHADER)  # Шейдер для солнца
 
     # создать меши
     plane_data = create_plane(80.0, uv_scale=30.0)
@@ -461,7 +525,7 @@ def main():
     depth_map = glGenTextures(1)
     glBindTexture(GL_TEXTURE_2D, depth_map)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_W, SHADOW_H, 0, GL_DEPTH_COMPONENT, GL_FLOAT, None)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)  # Изменил на LINEAR для сглаживания
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER)
@@ -508,8 +572,8 @@ def main():
 
     glfw.set_cursor_pos_callback(window, cursor_pos)
 
-    # свет - улучшена позиция для лучших теней
-    light_pos = glm.vec3(40.0, 100.0, 40.0)
+    # свет - позиция для солнца в небе
+    light_pos = glm.vec3(40.0, 80.0, 40.0)  # Высоко в небе
 
     # позиции домиков
     line_z = 0.0
@@ -572,7 +636,7 @@ def main():
 
         # 1) рендер теневой карты
         near_plane, far_plane = 1.0, 150.0
-        light_proj = glm.ortho(-70.0,70.0,-70.0,70.0, near_plane, far_plane)  # Увеличил область обзора
+        light_proj = glm.ortho(-70.0,70.0,-70.0,70.0, near_plane, far_plane)
         light_view = glm.lookAt(light_pos, glm.vec3(0.0,0.0,0.0), glm.vec3(0.0,1.0,0.0))
         light_space = light_proj * light_view
         glViewport(0,0,SHADOW_W,SHADOW_H)
@@ -942,6 +1006,27 @@ def main():
         # Рамка вокруг двери Спанчбоба (изогнутая, повторяет форму полуэллипса)
         door_frame_model = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.0, 0.0, 1.45)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 2.2, 0.8))
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, door_frame_model, 64.0)
+        
+        # Рендер солнца (после всех непрозрачных объектов, но до полупрозрачных)
+        glUseProgram(sun_prog)
+        glUniformMatrix4fv(glGetUniformLocation(sun_prog, 'view'), 1, GL_FALSE, glm.value_ptr(view))
+        glUniformMatrix4fv(glGetUniformLocation(sun_prog, 'projection'), 1, GL_FALSE, glm.value_ptr(proj))
+        glUniform3fv(glGetUniformLocation(sun_prog, 'sunPos'), 1, glm.value_ptr(light_pos))
+        glUniform3fv(glGetUniformLocation(sun_prog, 'viewPos'), 1, glm.value_ptr(cam_pos))
+        
+        # Отключаем тест глубины для солнца, чтобы оно всегда было видно
+        glDepthMask(GL_FALSE)
+        glDisable(GL_DEPTH_TEST)
+        
+        # Создаем солнце как сферу с ярким свечением
+        sun_model = glm.translate(glm.mat4(1.0), light_pos) * glm.scale(glm.mat4(1.0), glm.vec3(8.0, 8.0, 8.0))
+        glUniformMatrix4fv(glGetUniformLocation(sun_prog, 'model'), 1, GL_FALSE, glm.value_ptr(sun_model))
+        glBindVertexArray(sph_vao)
+        glDrawArrays(GL_TRIANGLES, 0, sph_count)
+        
+        # Включаем тест глубины обратно
+        glEnable(GL_DEPTH_TEST)
+        glDepthMask(GL_TRUE)
         
         # Рендер цветков (после всей сцены, чтобы прозрачность работала правильно)
         glUseProgram(flower_prog)
