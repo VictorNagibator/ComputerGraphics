@@ -658,6 +658,10 @@ def main():
         road_next = glm.translate(glm.mat4(1.0), glm.vec3(-45.0, 0.0, 53.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
         draw_textured(cube_vao, cube_count, tex_road, road_next, 16.0)
 
+        # Дорога до Красти Крабс
+        road_to_krusty_krabs = glm.translate(glm.mat4(1.0), glm.vec3(40.0, 0.0, 8.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
+        draw_textured(cube_vao, cube_count, tex_road, road_to_krusty_krabs, 16.0)
+
         # Домики обычных жителей 
         for i, house_pos in enumerate(house_positions):
             random_height_bonus = random_height_bonuses[i]
