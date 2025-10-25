@@ -638,6 +638,148 @@ def create_rope(length=10.0, segments=32, sag=0.8):
     
     return np.array(verts, dtype=np.float32)
 
+def create_bucket(height=3.0, bottom_radius=1.5, top_radius=2.0, segments=32):
+    """Создает ведро (усеченный конус)"""
+    verts = []
+    
+    # Боковая поверхность ведра
+    for i in range(segments):
+        a0 = 2*np.pi*i/segments
+        a1 = 2*np.pi*(i+1)/segments
+        
+        # Точки для боковой поверхности
+        p0_bottom = (bottom_radius*np.cos(a0), -height/2, bottom_radius*np.sin(a0))
+        p1_bottom = (bottom_radius*np.cos(a1), -height/2, bottom_radius*np.sin(a1))
+        p0_top = (top_radius*np.cos(a0), height/2, top_radius*np.sin(a0))
+        p1_top = (top_radius*np.cos(a1), height/2, top_radius*np.sin(a1))
+        
+        # Нормали для боковой поверхности (наклонные)
+        normal0 = (np.cos(a0), 0.3, np.sin(a0))
+        normal1 = (np.cos(a1), 0.3, np.sin(a1))
+        normal0 = normal0 / np.linalg.norm(normal0)
+        normal1 = normal1 / np.linalg.norm(normal1)
+        
+        # Боковая поверхность
+        verts.extend([*p0_bottom, *normal0, i/segments, 0])
+        verts.extend([*p0_top, *normal0, i/segments, 1])
+        verts.extend([*p1_bottom, *normal1, (i+1)/segments, 0])
+        verts.extend([*p0_top, *normal0, i/segments, 1])
+        verts.extend([*p1_top, *normal1, (i+1)/segments, 1])
+        verts.extend([*p1_bottom, *normal1, (i+1)/segments, 0])
+    
+    # Дно ведра
+    center_bottom = (0.0, -height/2, 0.0)
+    normal_bottom = (0.0, -1.0, 0.0)
+    for i in range(segments):
+        a0 = 2*np.pi*i/segments
+        a1 = 2*np.pi*(i+1)/segments
+        p0 = (bottom_radius*np.cos(a0), -height/2, bottom_radius*np.sin(a0))
+        p1 = (bottom_radius*np.cos(a1), -height/2, bottom_radius*np.sin(a1))
+        verts.extend([*center_bottom, *normal_bottom, 0.5, 0.5])
+        verts.extend([*p0, *normal_bottom, 0.5+0.5*np.cos(a0), 0.5+0.5*np.sin(a0)])
+        verts.extend([*p1, *normal_bottom, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
+    
+    return np.array(verts, dtype=np.float32)
+
+def create_bucket_lid(radius=2.2, thickness=0.3, segments=32):
+    """Создает крышку для ведра"""
+    verts = []
+    
+    # Верхняя часть крышки
+    center_top = (0.0, thickness/2, 0.0)
+    normal_top = (0.0, 1.0, 0.0)
+    for i in range(segments):
+        a0 = 2*np.pi*i/segments
+        a1 = 2*np.pi*(i+1)/segments
+        p0 = (radius*np.cos(a0), thickness/2, radius*np.sin(a0))
+        p1 = (radius*np.cos(a1), thickness/2, radius*np.sin(a1))
+        verts.extend([*center_top, *normal_top, 0.5, 0.5])
+        verts.extend([*p0, *normal_top, 0.5+0.5*np.cos(a0), 0.5+0.5*np.sin(a0)])
+        verts.extend([*p1, *normal_top, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
+    
+    # Боковая поверхность крышки
+    for i in range(segments):
+        a0 = 2*np.pi*i/segments
+        a1 = 2*np.pi*(i+1)/segments
+        
+        p0_top = (radius*np.cos(a0), thickness/2, radius*np.sin(a0))
+        p1_top = (radius*np.cos(a1), thickness/2, radius*np.sin(a1))
+        p0_bottom = (radius*np.cos(a0), -thickness/2, radius*np.sin(a0))
+        p1_bottom = (radius*np.cos(a1), -thickness/2, radius*np.sin(a1))
+        
+        normal = (np.cos(a0), 0, np.sin(a0))
+        
+        verts.extend([*p0_top, *normal, i/segments, 1])
+        verts.extend([*p0_bottom, *normal, i/segments, 0])
+        verts.extend([*p1_top, *normal, (i+1)/segments, 1])
+        verts.extend([*p1_top, *normal, (i+1)/segments, 1])
+        verts.extend([*p0_bottom, *normal, i/segments, 0])
+        verts.extend([*p1_bottom, *normal, (i+1)/segments, 0])
+    
+    return np.array(verts, dtype=np.float32)
+
+def create_bucket_handle(radius=1.8, thickness=0.1, segments=32):
+    """Создает ручку для ведра (полукруг)"""
+    verts = []
+    
+    for i in range(segments//2):
+        a0 = np.pi * i/segments * 2
+        a1 = np.pi * (i+1)/segments * 2
+        
+        # Внешние точки
+        p0_outer = ((radius+thickness)*np.cos(a0), (radius+thickness)*np.sin(a0), 0)
+        p1_outer = ((radius+thickness)*np.cos(a1), (radius+thickness)*np.sin(a1), 0)
+        
+        # Внутренние точки
+        p0_inner = (radius*np.cos(a0), radius*np.sin(a0), 0)
+        p1_inner = (radius*np.cos(a1), radius*np.sin(a1), 0)
+        
+        # Нормали (примерные)
+        normal = (0, 0, 1)
+        
+        # Два треугольника для сегмента
+        verts.extend([*p0_outer, *normal, i/segments, 0])
+        verts.extend([*p0_inner, *normal, i/segments, 1])
+        verts.extend([*p1_outer, *normal, (i+1)/segments, 0])
+        verts.extend([*p0_inner, *normal, i/segments, 1])
+        verts.extend([*p1_inner, *normal, (i+1)/segments, 1])
+        verts.extend([*p1_outer, *normal, (i+1)/segments, 0])
+    
+    return np.array(verts, dtype=np.float32)
+
+def create_fist(scale=1.0):
+    """Создает упрощенную модель кулака"""
+    verts = []
+    
+    # Основная часть кулака (сфера)
+    fist_data = create_sphere(16, 16)
+    for i in range(0, len(fist_data), 8):
+        x, y, z, nx, ny, nz, u, v = fist_data[i:i+8]
+        # Немного деформируем сферу чтобы сделать更像 кулак
+        scale_x = scale * 0.8
+        scale_y = scale * 1.2
+        scale_z = scale * 0.9
+        verts.extend([x*scale_x, y*scale_y, z*scale_z, nx, ny, nz, u, v])
+    
+    return np.array(verts, dtype=np.float32)
+
+def create_thumb(scale=1.0):
+    """Создает большой палец для кулака"""
+    verts = []
+    
+    # Большой палец (маленькая сфера)
+    thumb_data = create_sphere(12, 12)
+    for i in range(0, len(thumb_data), 8):
+        x, y, z, nx, ny, nz, u, v = thumb_data[i:i+8]
+        # Смещаем и масштабируем
+        scale_thumb = scale * 0.4
+        offset_x = scale * 0.6
+        offset_y = scale * 0.3
+        offset_z = scale * 0.5
+        verts.extend([x*scale_thumb + offset_x, y*scale_thumb + offset_y, z*scale_thumb + offset_z, nx, ny, nz, u, v])
+    
+    return np.array(verts, dtype=np.float32)
+
 def get_parabolic_position(x, length=10.0, sag=0.8):
     """Вычисляет позицию на параболической веревке"""
     half_len = length / 2
@@ -732,6 +874,18 @@ def main():
     flag_vao, _, flag_count = make_vao(flag_data)
     rope_data = create_rope(length=10.0, segments=64, sag=1.2)
     rope_vao, _, rope_count = make_vao(rope_data)
+    
+    # Новые меши для Chum Bucket
+    bucket_data = create_bucket(height=3.0, bottom_radius=1.5, top_radius=2.0, segments=32)
+    bucket_vao, _, bucket_count = make_vao(bucket_data)
+    bucket_lid_data = create_bucket_lid(radius=2.2, thickness=0.3, segments=32)
+    bucket_lid_vao, _, bucket_lid_count = make_vao(bucket_lid_data)
+    bucket_handle_data = create_bucket_handle(radius=1.8, thickness=0.1, segments=32)
+    bucket_handle_vao, _, bucket_handle_count = make_vao(bucket_handle_data)
+    fist_data = create_fist(scale=1.0)
+    fist_vao, _, fist_count = make_vao(fist_data)
+    thumb_data = create_thumb(scale=1.0)
+    thumb_vao, _, thumb_count = make_vao(thumb_data)
 
     # текстуры
     texdir = os.path.join(os.path.dirname(__file__), 'textures')
@@ -766,6 +920,9 @@ def main():
     tex_glass_door = create_color_texture(0.7, 0.9, 1.0, 0.8)  # Стеклянная дверь
     tex_gold = create_color_texture(0.9, 0.7, 0.1)  # Золотистый цвет
     tex_shell = create_color_texture(1.0, 0.9, 0.8)     # Светлый цвет ракушки
+    tex_purple = create_color_texture(0.5, 0.3, 0.7)    # Фиолетовый цвет для кулака
+    tex_dark_gray = create_color_texture(0.3, 0.3, 0.3) # Темно-серый для ведра
+    tex_chum_bucket = create_color_texture(0.2, 0.2, 0.4) # Темно-синий для Chum Bucket
 
     # Создаем текстуру с текстом "The Krusty Krab"
     def create_text_texture(text, width=256, height=64, font_size=32):
@@ -817,6 +974,7 @@ def main():
             return create_color_texture(1.0, 0.0, 0.0)
     
     tex_sign_text = create_text_texture("        The\nKRUSTY KRAB", width=512, height=128, font_size=48)
+    tex_chum_text = create_text_texture("   CHUM\nBUCKET", width=512, height=128, font_size=48)
 
     # Цвета флажков: красный, желтый, синий (чередуются)
     flag_colors = [
@@ -892,6 +1050,7 @@ def main():
     pos_squid = glm.vec3(0.0, 0.0, line_z)
     pos_sponge = glm.vec3(8.0, 0.0, line_z)
     pos_krusty_krab = glm.vec3(50.0, 0.0, line_z)
+    pos_chum_bucket = glm.vec3(50.0, 0.0, 20.0)  # Позиция Chum Bucket напротив Krusty Krab
     
     # Позиции для цветков в небе
     flower_positions = []
@@ -978,6 +1137,11 @@ def main():
             
             road_to_krusty_krabs = glm.translate(glm.mat4(1.0), glm.vec3(40.0, 0.0, 8.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(road_to_krusty_krabs))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            # Дорога к Chum Bucket
+            road_to_chum_bucket = glm.translate(glm.mat4(1.0), glm.vec3(40.0, 0.0, -10.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(road_to_chum_bucket))
             glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
             
             # Дорожки к домам
@@ -1151,7 +1315,41 @@ def main():
                         glm.rotate(glm.mat4(1.0), glm.radians(-25.0), glm.vec3(0,0,1))
                 glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(flag_model))
                 glBindVertexArray(flag_vao); glDrawArrays(GL_TRIANGLES,0,flag_count)
-        
+            
+            # Chum Bucket
+            # Основное ведро
+            bucket_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 1.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.0, 2.0, 2.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(bucket_model))
+            glBindVertexArray(bucket_vao); glDrawArrays(GL_TRIANGLES,0,bucket_count)
+            
+            # Крышка ведра
+            lid_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 3.2, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.2, 0.3, 2.2))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(lid_model))
+            glBindVertexArray(bucket_lid_vao); glDrawArrays(GL_TRIANGLES,0,bucket_lid_count)
+            
+            # Ручка ведра
+            handle_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 3.5, 0.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.8, 1.8, 1.8))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(handle_model))
+            glBindVertexArray(bucket_handle_vao); glDrawArrays(GL_TRIANGLES,0,bucket_handle_count)
+            
+            # Кулак, держащий ручку
+            fist_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 4.5, 1.8)) * glm.scale(glm.mat4(1.0), glm.vec3(0.8, 0.8, 0.8))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(fist_model))
+            glBindVertexArray(fist_vao); glDrawArrays(GL_TRIANGLES,0,fist_count)
+            
+            # Большой палец
+            thumb_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 4.5, 1.8)) * glm.scale(glm.mat4(1.0), glm.vec3(0.8, 0.8, 0.8))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(thumb_model))
+            glBindVertexArray(thumb_vao); glDrawArrays(GL_TRIANGLES,0,thumb_count)
+            
+            # Вывеска Chum Bucket
+            chum_sign_post = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(3.0, 0.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 2.8, 1.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(chum_sign_post))
+            glBindVertexArray(sign_post_vao); glDrawArrays(GL_TRIANGLES,0,sign_post_count)
+            
+            chum_sign = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(3.0, 2.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.5, 1.1, 0.01))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(chum_sign))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
             
             # Домики обычных жителей
             for i, house_pos in enumerate(house_positions):
@@ -1254,6 +1452,10 @@ def main():
         road_to_krusty_krabs = glm.translate(glm.mat4(1.0), glm.vec3(50.0, 0.0, 5.75)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.5, 0.01, 1.5))
         draw_textured(cube_vao, cube_count, tex_road, road_to_krusty_krabs, 16.0)
 
+        # Дорога до Чам Бакета
+        road_to_chum_bucket = glm.translate(glm.mat4(1.0), glm.vec3(50.0, 0.0, 15.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(11.0, 0.01, 1.5))
+        draw_textured(cube_vao, cube_count, tex_road, road_to_chum_bucket, 16.0)
+
         # Асфальт под красти крабом
         under_krusty_krabs = glm.translate(glm.mat4(1.0), glm.vec3(50.0, 0.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(12.0, 0.01, 10.0))
         draw_textured(cube_vao, cube_count, tex_road, under_krusty_krabs, 16.0)
@@ -1300,7 +1502,6 @@ def main():
         draw_textured(cube_vao, cube_count, tex_krusty_krab, foundation_left, 24.0)
         draw_textured(cube_vao, cube_count, tex_krusty_krab, foundation_right, 24.0)
 
-        # ---- Вывеска "The Krusty Krab" ----
         # Столб вывески
         sign_post_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 0.0, 5.28)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 2.8, 1.0))
         draw_textured(sign_post_vao, sign_post_count, tex_wood, sign_post_model, 24.0)
@@ -1351,6 +1552,26 @@ def main():
                        glm.rotate(glm.mat4(1.0), glm.radians(25.0), glm.vec3(0,0,1)) 
         draw_textured(flag_vao, flag_count, flag_colors[5], flag_model6, 32.0) 
 
+        # ведро
+        bucket_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 1.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 2.0, 1.0))
+        draw_textured(bucket_vao, bucket_count, tex_chum_bucket, bucket_model, 32.0)
+        
+        # Крышка ведра
+        lid_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 4.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 0.5, 1.0))
+        draw_textured(bucket_lid_vao, bucket_lid_count, tex_dark_gray, lid_model, 32.0)
+        
+        # Ручка ведра
+        handle_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 4.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 1.0, 1.0))
+        draw_textured(bucket_handle_vao, bucket_handle_count, tex_dark_gray, handle_model, 32.0)
+        
+        # Кулак, держащий ручку
+        fist_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 6.5, 0.15)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6, 0.4, 0.3))
+        draw_textured(fist_vao, fist_count, tex_purple, fist_model, 16.0)
+        
+        # Большой палец
+        thumb_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(-0.6, 6.2, -0.2)) * glm.scale(glm.mat4(1.0), glm.vec3(0.4, 0.4, 0.4))
+        draw_textured(thumb_vao, thumb_count, tex_purple, thumb_model, 16.0)
+        
 
         # Домики обычных жителей 
         for i, house_pos in enumerate(house_positions):
