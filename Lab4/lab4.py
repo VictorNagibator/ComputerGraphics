@@ -509,7 +509,7 @@ def main():
     glfw.set_cursor_pos_callback(window, cursor_pos)
 
     # свет - улучшена позиция для лучших теней
-    light_pos = glm.vec3(0.0, 25.0, -20.0)
+    light_pos = glm.vec3(40.0, 100.0, 40.0)
 
     # позиции домиков
     line_z = 0.0
@@ -571,7 +571,7 @@ def main():
         w, h = glfw.get_framebuffer_size(window)
 
         # 1) рендер теневой карты
-        near_plane, far_plane = 1.0, 150.0  # Увеличил far_plane для большей сцены
+        near_plane, far_plane = 1.0, 150.0
         light_proj = glm.ortho(-70.0,70.0,-70.0,70.0, near_plane, far_plane)  # Увеличил область обзора
         light_view = glm.lookAt(light_pos, glm.vec3(0.0,0.0,0.0), glm.vec3(0.0,1.0,0.0))
         light_space = light_proj * light_view
@@ -582,26 +582,122 @@ def main():
         glUniformMatrix4fv(glGetUniformLocation(depth_prog, 'lightSpaceMatrix'), 1, GL_FALSE, glm.value_ptr(light_space))
 
         def render_depth():
+            # Плоскость
             model = glm.translate(glm.mat4(1.0), glm.vec3(0.0,-0.01,0.0))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model))
             glBindVertexArray(plane_vao); glDrawArrays(GL_TRIANGLES, 0, plane_count)
+            
+            # Дороги
+            road_main = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, 8.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(road_main))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            curved_road_model = glm.mat4(1.0)
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(curved_road_model))
+            glBindVertexArray(curved_road_vao); glDrawArrays(GL_TRIANGLES,0,curved_road_count)
+            
+            road_next = glm.translate(glm.mat4(1.0), glm.vec3(-45.0, 0.0, 53.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(road_next))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            road_to_krusty_krabs = glm.translate(glm.mat4(1.0), glm.vec3(40.0, 0.0, 8.0)) * glm.scale(glm.mat4(1.0), glm.vec3(40.0, 0.01, 3.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(road_to_krusty_krabs))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            # Дорожки к домам
+            road_patrick = glm.translate(glm.mat4(1.0), glm.vec3(-8.0, 0.0, 3.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(7.0, 0.01, 1.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(road_patrick))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            road_sponge = glm.translate(glm.mat4(1.0), glm.vec3(8.0, 0.0, 3.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0)) * glm.scale(glm.mat4(1.0), glm.vec3(7.0, 0.01, 1.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(road_sponge))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            # Дорожка к дому Сквидварда
+            for z in [2.0, 3.0, 4.0, 5.0, 6.0]:
+                road_squid = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, z)) * glm.scale(glm.mat4(1.0), glm.vec3(0.7, 0.1, 0.3))
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(road_squid))
+                glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
             # Patrick
-            model_p = glm.translate(glm.mat4(1.0), pos_patrick + glm.vec3(0.0,0.6,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.8,1.0,1.8))
-            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_p))
-            glBindVertexArray(sph_vao); glDrawArrays(GL_TRIANGLES,0,sph_count)
-            # Squidward
-            model_sq = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(0.0,0.0,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.8,4.0,1.8))
-            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_sq))
-            glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
-            # Sponge
-            model_sb = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.0,0.6,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.6,2.0,1.2))
-            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_sb))
+            model_patrick = glm.translate(glm.mat4(1.0), pos_patrick + glm.vec3(0.0,0.0,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.8,1.6,1.8))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_patrick))
             glBindVertexArray(sph_vao); glDrawArrays(GL_TRIANGLES,0,sph_count)
             
-            # Домики обычных жителей для теневой карты
+            # Флюгер Патрика
+            weathervane_vertical = model_for_box((pos_patrick.x, pos_patrick.y + 1.5, pos_patrick.z), (0.1, 0.75, 0.1))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(weathervane_vertical))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            weathervane_horizontal = model_for_box((pos_patrick.x, pos_patrick.y + 1.92, pos_patrick.z), (0.6, 0.1, 0.1))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(weathervane_horizontal))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            # Squidward
+            model_sq_base = glm.translate(glm.mat4(1.0), pos_squid) * glm.scale(glm.mat4(1.0), glm.vec3(1.8,7.0,1.8))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_sq_base))
+            glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
+            
+            # Крыша Сквидварда (диск)
+            roof_squid = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(0.0,3.5,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.8,1.8,1.8))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(roof_squid))
+            glBindVertexArray(disk_vao); glDrawArrays(GL_TRIANGLES,0,disk_count)
+            
+            # Детали Сквидварда
+            ear_right = model_for_box((pos_squid.x + 1.0, pos_squid.y + 2.0, pos_squid.z), (0.2,0.8,0.2))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(ear_right))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            ear_left  = model_for_box((pos_squid.x - 1.0, pos_squid.y + 2.0, pos_squid.z), (0.2,0.8,0.2))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(ear_left))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            brow = model_for_box((pos_squid.x, pos_squid.y + 2.6, pos_squid.z + 0.8), (1.4,0.25,0.25))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(brow))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            nose = model_for_box((pos_squid.x, pos_squid.y + 2.0, pos_squid.z + 0.9), (0.4,1.0,0.4))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(nose))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            # Дверь Сквидварда
+            door_squid = model_for_box((pos_squid.x, pos_squid.y + 0.5, pos_squid.z + 0.88), (0.6,1.2,0.05))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(door_squid))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            # SpongeBob
+            model_sponge = glm.translate(glm.mat4(1.0), pos_sponge) * glm.scale(glm.mat4(1.0), glm.vec3(1.5,2.8,1.5))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_sponge))
+            glBindVertexArray(sph_vao); glDrawArrays(GL_TRIANGLES,0,sph_count)
+            
+            # Листья Спанчбоба
+            leaf1 = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.0, 3.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.1,0.8,0.6))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(leaf1))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            leaf2 = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(-0.25, 2.9, 0.0)) * glm.rotate(glm.mat4(1.0), glm.radians(45.0), glm.vec3(0,1,1)) * glm.scale(glm.mat4(1.0), glm.vec3(0.1,0.7,0.6))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(leaf2))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            leaf3 = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.25, 2.9, 0.0)) * glm.rotate(glm.mat4(1.0), glm.radians(-45.0), glm.vec3(0,1,1)) * glm.scale(glm.mat4(1.0), glm.vec3(0.1,0.7,0.6))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(leaf3))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+            
+            # Дверь Спанчбоба
+            door_sponge = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.0, -0.25, 1.45)) * glm.scale(glm.mat4(1.0), glm.vec3(0.4, 1.3, 0.1))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(door_sponge))
+            glBindVertexArray(sph_vao); glDrawArrays(GL_TRIANGLES,0,sph_count)
+            
+            # Рамка двери Спанчбоба
+            door_frame_model = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.0, 0.0, 1.45)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 2.2, 0.8))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(door_frame_model))
+            glBindVertexArray(window_frame_vao); glDrawArrays(GL_TRIANGLES,0,window_frame_count)
+            
+            # Домики обычных жителей
             for i, house_pos in enumerate(house_positions):
                 random_height_bonus = random_height_bonuses[i]
-                # Тело домика (цилиндр)
+                
+                # Тело домика
                 model_house = glm.translate(glm.mat4(1.0), house_pos) * glm.scale(glm.mat4(1.0), glm.vec3(2.0, 10.0 + random_height_bonus, 2.0))
                 glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_house))
                 glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
@@ -610,11 +706,43 @@ def main():
                 model_roof_base = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 5.0 + random_height_bonus / 2, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.2, 0.2, 2.2))
                 glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_roof_base))
                 glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
-
-                # Труба на крыше
+                
+                # Диски крыши
+                model_roof_bottom = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 5.0 + random_height_bonus / 2, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.2, 1.0, 2.2))
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_roof_bottom))
+                glBindVertexArray(disk_vao); glDrawArrays(GL_TRIANGLES,0,disk_count)
+                
+                model_roof_top = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 5.1 + random_height_bonus / 2, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.2, 1.0, 2.2))
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_roof_top))
+                glBindVertexArray(disk_vao); glDrawArrays(GL_TRIANGLES,0,disk_count)
+                
+                # Труба
                 model_chimney = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(random_height_bonus / 4, 5.1 + random_height_bonus / 2, random_height_bonus / 4)) * glm.scale(glm.mat4(1.0), glm.vec3(0.4, 2.0, 0.4))
                 glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_chimney))
                 glBindVertexArray(cyl_vao); glDrawArrays(GL_TRIANGLES,0,cyl_count)
+                
+                # Диск трубы
+                model_chimney_disk = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(random_height_bonus / 4, 5.9 + random_height_bonus / 2, random_height_bonus / 4)) * glm.scale(glm.mat4(1.0), glm.vec3(0.4, 2.0, 0.4))
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(model_chimney_disk))
+                glBindVertexArray(disk_vao); glDrawArrays(GL_TRIANGLES,0,disk_count)
+                
+                # Окна (рамки)
+                window_front = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 1.5 + random_height_bonus / 2, 1.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.75,0.75,0.75))
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(window_front))
+                glBindVertexArray(window_frame_vao); glDrawArrays(GL_TRIANGLES,0,window_frame_count)
+                
+                window_back = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 4.0 + random_height_bonus / 2, -1.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.75,0.75,0.75))
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(window_back))
+                glBindVertexArray(window_frame_vao); glDrawArrays(GL_TRIANGLES,0,window_frame_count)
+                
+                # Стекла окон
+                window_glass_front = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 1.5 + random_height_bonus / 2, 1.0)) * glm.scale(glm.mat4(1.0) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)), glm.vec3(0.6, 0.6, 0.6))
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(window_glass_front))
+                glBindVertexArray(disk_vao); glDrawArrays(GL_TRIANGLES,0,disk_count)
+                
+                window_glass_back = glm.translate(glm.mat4(1.0), house_pos + glm.vec3(0.0, 4.0 + random_height_bonus / 2, -1.0)) * glm.scale(glm.mat4(1.0) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)), glm.vec3(0.6, 0.6, 0.6))
+                glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(window_glass_back))
+                glBindVertexArray(disk_vao); glDrawArrays(GL_TRIANGLES,0,disk_count)
 
         render_depth()
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
