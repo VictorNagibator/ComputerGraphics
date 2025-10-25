@@ -52,35 +52,56 @@ uniform float materialShininess;
 float ShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir){
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
-    if(projCoords.z > 1.0) return 0.0;
+    
+    if(projCoords.z > 1.0) 
+        return 0.0;
+        
     float closestDepth = texture(shadowMap, projCoords.xy).r;
     float currentDepth = projCoords.z;
-    float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);
+    
+    // Улучшенный расчет bias для разных поверхностей
+    float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.01);
+    
+    // PCF с улучшенными параметрами
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-    for(int x=-2;x<=2;x++){
-        for(int y=-2;y<=2;y++){
-            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x,y)*texelSize).r;
+    
+    // Увеличиваем радиус PCF для более мягких теней
+    for(int x = -3; x <= 3; x++){
+        for(int y = -3; y <= 3; y++){
+            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x,y) * texelSize).r;
             shadow += (currentDepth - bias > pcfDepth) ? 1.0 : 0.0;
         }
     }
-    shadow /= 25.0;
-    return shadow;
+    shadow /= 49.0;
+    
+    // Усиливаем тени для лучшей видимости
+    return shadow * 1.2;
 }
 
 void main(){
     vec3 color = texture(texture_diffuse1, TexCoord).rgb;
     vec3 normal = normalize(Normal);
     vec3 lightColor = vec3(1.0);
-    vec3 ambient = 0.3 * color;
+    
+    // Ambient
+    vec3 ambient = 0.25 * color;
+    
+    // Diffuse
     vec3 lightDir = normalize(lightPos - FragPos);
     float diff = max(dot(normal, lightDir), 0.0);
     vec3 diffuse = diff * color;
+    
+    // Specular
     vec3 viewDir = normalize(viewPos - FragPos);
     vec3 reflectDir = reflect(-lightDir, normal);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), materialShininess);
-    vec3 specular = spec * lightColor * 0.3;
+    vec3 specular = spec * lightColor * 0.25;
+    
+    // Shadow
     float shadow = ShadowCalculation(FragPosLightSpace, normal, lightDir);
+    
+    // Финальное освещение с улучшенными тенями
     vec3 lighting = ambient + (1.0 - shadow) * (diffuse + specular);
     FragColor = vec4(lighting, 1.0);
 }
@@ -148,31 +169,22 @@ uniform vec3 sunPos;
 uniform vec3 viewPos;
 
 void main(){
-    // Основной цвет солнца - ярко-желтый
     vec3 sunColor = vec3(1.0, 0.9, 0.4);
-    
-    // Вычисляем нормаль и направление к камере
     vec3 norm = normalize(Normal);
     vec3 viewDir = normalize(viewPos - FragPos);
     vec3 lightDir = normalize(sunPos - FragPos);
     
-    // Яркое ядро солнца
     float coreIntensity = 2.0;
     vec3 coreColor = sunColor * coreIntensity;
     
-    // Эффект блика - когда смотрим почти прямо на солнце
     float spec = pow(max(dot(viewDir, lightDir), 0.0), 128.0);
     vec3 glare = vec3(1.0, 1.0, 0.8) * spec * 3.0;
     
-    // Рассеянное свечение вокруг солнца
     float glow = 1.0 - dot(norm, viewDir);
     glow = pow(glow, 2.0);
     vec3 glowColor = vec3(1.0, 0.7, 0.3) * glow * 1.5;
     
-    // Комбинируем все эффекты
     vec3 finalColor = coreColor + glare + glowColor;
-    
-    // Усиливаем интенсивность
     finalColor *= 2.0;
     
     FragColor = vec4(finalColor, 1.0);
@@ -780,13 +792,6 @@ def create_thumb(scale=1.0):
     
     return np.array(verts, dtype=np.float32)
 
-def get_parabolic_position(x, length=10.0, sag=0.8):
-    """Вычисляет позицию на параболической веревке"""
-    half_len = length / 2
-    a = -4 * sag / (length * length)
-    y = a * x * x + sag
-    return y
-
 def load_texture(path):
     img = Image.open(path).convert('RGBA')
     img_data = np.array(img)[::-1]
@@ -923,6 +928,7 @@ def main():
     tex_purple = create_color_texture(0.5, 0.3, 0.7)    # Фиолетовый цвет для кулака
     tex_dark_gray = create_color_texture(0.3, 0.3, 0.3) # Темно-серый для ведра
     tex_chum_bucket = create_color_texture(0.2, 0.2, 0.4) # Темно-синий для Chum Bucket
+    tex_dark_brown = create_color_texture(0.4, 0.3, 0.2)  # Темно-коричневый для дверей
 
     # Создаем текстуру с текстом "The Krusty Krab"
     def create_text_texture(text, width=256, height=64, font_size=32):
@@ -973,8 +979,56 @@ def main():
             # Возвращаем простую красную текстуру в случае ошибки
             return create_color_texture(1.0, 0.0, 0.0)
     
+    # СОЗДАЕМ ПРОЗРАЧНУЮ ТЕКСТУРУ ДЛЯ "Chum Bucket"
+    def create_transparent_text_texture(text, width=512, height=128, font_size=48):
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            
+            # Создаем полностью прозрачное изображение
+            img = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+            draw = ImageDraw.Draw(img)
+            
+            # Пытаемся использовать шрифт
+            try:
+                font = ImageFont.truetype("arial.ttf", font_size)
+            except:
+                try:
+                    font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+                except:
+                    font = ImageFont.load_default()
+            
+            # Получаем размеры текста
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            
+            # Центрируем текст
+            x = (width - text_width) // 2
+            y = (height - text_height) // 2
+            
+            # Рисуем ТОЛЬКО красный текст на прозрачном фоне
+            draw.text((x, y), text, font=font, fill=(255, 0, 0, 255))
+            
+            # Конвертируем в numpy массив
+            img_data = np.array(img)[::-1]
+            
+            # Создаем текстуру
+            tex = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, tex)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
+            glGenerateMipmap(GL_TEXTURE_2D)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            
+            return tex
+        except Exception as e:
+            print(f"Failed to create transparent text texture: {e}")
+            return create_color_texture(1.0, 0.0, 0.0, 0.0)  # Прозрачный красный
+    
     tex_sign_text = create_text_texture("        The\nKRUSTY KRAB", width=512, height=128, font_size=48)
-    tex_chum_text = create_text_texture("   CHUM\nBUCKET", width=512, height=128, font_size=48)
+    tex_chum_text = create_transparent_text_texture("    CHUM\n  BUCKET", width=512, height=128, font_size=48)
 
     # Цвета флажков: красный, желтый, синий (чередуются)
     flag_colors = [
@@ -988,8 +1042,8 @@ def main():
     
     tex_rope = create_color_texture(0.5, 0.4, 0.3)  # Цвет веревки
 
-    # теневой фреймбуфер
-    SHADOW_W, SHADOW_H = 4096, 4096 
+    # теневой фреймбуфер - УВЕЛИЧИВАЕМ РАЗРЕШЕНИЕ ДЛЯ ЛУЧШИХ ТЕНЕЙ
+    SHADOW_W, SHADOW_H = 8192, 8192 
     depth_map_fbo = glGenFramebuffers(1)
     depth_map = glGenTextures(1)
     glBindTexture(GL_TEXTURE_2D, depth_map)
@@ -1105,9 +1159,9 @@ def main():
         process_movement(delta)
         w, h = glfw.get_framebuffer_size(window)
 
-        # 1) рендер теневой карты
-        near_plane, far_plane = 1.0, 150.0
-        light_proj = glm.ortho(-70.0,70.0,-70.0,70.0, near_plane, far_plane)
+        # 1) рендер теневой карты - УВЕЛИЧИВАЕМ ОБЛАСТЬ ТЕНЕЙ
+        near_plane, far_plane = 1.0, 200.0  # Увеличиваем far_plane
+        light_proj = glm.ortho(-100.0, 100.0, -100.0, 100.0, near_plane, far_plane)  # Увеличиваем область
         light_view = glm.lookAt(light_pos, glm.vec3(0.0,0.0,0.0), glm.vec3(0.0,1.0,0.0))
         light_space = light_proj * light_view
         glViewport(0,0,SHADOW_W,SHADOW_H)
@@ -1285,14 +1339,25 @@ def main():
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(foundation_right))
             glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
 
-            # Вывеска "Krusty Krab"
-            sign_post_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.0, 0.0, 4.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 1.0, 1.0))
+           # Вывеска "Krusty Krab" - ИСПРАВЛЕННЫЕ МАСШТАБЫ И ПОЗИЦИИ
+            sign_post_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 0.0, 5.28)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 2.8, 1.0))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(sign_post_model))
             glBindVertexArray(sign_post_vao); glDrawArrays(GL_TRIANGLES,0,sign_post_count)
-            
-            shell_sign_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.0, 2.5, 4.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 0.8, 1.0))
-            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(shell_sign_model))
+
+            # Нижняя ракушка вывески
+            shell_bottom_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 5.69, 5.73)) * glm.rotate(glm.mat4(1.0), glm.radians(-180.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 1.0, 1.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(shell_bottom_model))
             glBindVertexArray(shell_sign_vao); glDrawArrays(GL_TRIANGLES,0,shell_sign_count)
+
+            # Верхняя ракушка вывески
+            shell_top_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 6.25, 5.3)) * glm.rotate(glm.mat4(1.0), glm.radians(-90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 1.0, 1.0))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(shell_top_model))
+            glBindVertexArray(shell_sign_vao); glDrawArrays(GL_TRIANGLES,0,shell_sign_count)
+
+            # Текст вывески (плоский квадрат)
+            sign_text_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 6.25, 5.31)) * glm.scale(glm.mat4(1.0), glm.vec3(2.5, 1.1, 0.01))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(sign_text_model))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
             
             # Гирлянда флажков с параболической веревкой
             rope_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 0.0, 4.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(0,1,0))
@@ -1318,36 +1383,46 @@ def main():
             
             # Chum Bucket
             # Основное ведро
-            bucket_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 1.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.0, 2.0, 2.0))
+            bucket_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 1.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 1.5, 1.0))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(bucket_model))
             glBindVertexArray(bucket_vao); glDrawArrays(GL_TRIANGLES,0,bucket_count)
-            
+
             # Крышка ведра
-            lid_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 3.2, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.2, 0.3, 2.2))
+            lid_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 2.7, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.1, 0.15, 1.1))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(lid_model))
             glBindVertexArray(bucket_lid_vao); glDrawArrays(GL_TRIANGLES,0,bucket_lid_count)
-            
-            # Ручка ведра
-            handle_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 3.5, 0.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.8, 1.8, 1.8))
+
+            # Ручка ведра 
+            handle_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 2.8, 0.0)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.9, 0.9, 0.9))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(handle_model))
             glBindVertexArray(bucket_handle_vao); glDrawArrays(GL_TRIANGLES,0,bucket_handle_count)
-            
-            # Кулак, держащий ручку
-            fist_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 4.5, 1.8)) * glm.scale(glm.mat4(1.0), glm.vec3(0.8, 0.8, 0.8))
+
+            # Кулак, держащий ручку 
+            fist_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 3.5, 0.9)) * glm.scale(glm.mat4(1.0), glm.vec3(0.4, 0.4, 0.4))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(fist_model))
             glBindVertexArray(fist_vao); glDrawArrays(GL_TRIANGLES,0,fist_count)
-            
+
             # Большой палец
-            thumb_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 4.5, 1.8)) * glm.scale(glm.mat4(1.0), glm.vec3(0.8, 0.8, 0.8))
+            thumb_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 3.5, 0.9)) * glm.scale(glm.mat4(1.0), glm.vec3(0.4, 0.4, 0.4))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(thumb_model))
             glBindVertexArray(thumb_vao); glDrawArrays(GL_TRIANGLES,0,thumb_count)
-            
+
+            # Темно-коричневая дверь 
+            door_chum = model_for_box((pos_chum_bucket.x, pos_chum_bucket.y + 0.75, pos_chum_bucket.z + 1.01), (0.6, 1.0, 0.05))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(door_chum))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+
+            # Надпись "Chum Bucket" на ведре 
+            sign_chum = model_for_box((pos_chum_bucket.x, pos_chum_bucket.y + 1.5, pos_chum_bucket.z + 1.01), (1.25, 0.4, 0.05))
+            glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(sign_chum))
+            glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
+
             # Вывеска Chum Bucket
-            chum_sign_post = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(3.0, 0.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 2.8, 1.0))
+            chum_sign_post = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(1.5, 0.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6, 1.4, 0.5))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(chum_sign_post))
             glBindVertexArray(sign_post_vao); glDrawArrays(GL_TRIANGLES,0,sign_post_count)
-            
-            chum_sign = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(3.0, 2.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(2.5, 1.1, 0.01))
+
+            chum_sign = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(1.5, 1.25, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.25, 0.55, 0.005))
             glUniformMatrix4fv(glGetUniformLocation(depth_prog,'model'),1,GL_FALSE, glm.value_ptr(chum_sign))
             glBindVertexArray(cube_vao); glDrawArrays(GL_TRIANGLES,0,cube_count)
             
@@ -1506,12 +1581,16 @@ def main():
         sign_post_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 0.0, 5.28)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 2.8, 1.0))
         draw_textured(sign_post_vao, sign_post_count, tex_wood, sign_post_model, 24.0)
         
+        # ракушка нижняя часть
+        shell_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 5.69, 5.73)) * glm.rotate(glm.mat4(1.0), glm.radians(-180.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 1.0, 1.0)) 
+        draw_textured(shell_sign_vao, shell_sign_count, tex_shell, shell_model, 32.0)
+
         # Ракушка-вывеска
-        shell_sign_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 5.45, 5.57)) * glm.rotate(glm.mat4(1.0), glm.radians(-90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 1.0, 1.0)) 
+        shell_sign_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 6.25, 5.3)) * glm.rotate(glm.mat4(1.0), glm.radians(-90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 1.0, 1.0)) 
         draw_textured(shell_sign_vao, shell_sign_count, tex_shell, shell_sign_model, 32.0)
         
         # Текст "The Krusty Krab" 
-        sign_text_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 5.45, 5.58)) * glm.scale(glm.mat4(1.0), glm.vec3(2.5, 1.1, 0.01))
+        sign_text_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-3.5, 6.25, 5.31)) * glm.scale(glm.mat4(1.0), glm.vec3(2.5, 1.1, 0.01))
         draw_textured(cube_vao, cube_count, tex_sign_text, sign_text_model, 64.0)
         
         rope_model = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 4.0, 2.0)) * glm.rotate(glm.mat4(1.0), glm.radians(145.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.7, 1.0, 1.0)) 
@@ -1552,7 +1631,8 @@ def main():
                        glm.rotate(glm.mat4(1.0), glm.radians(25.0), glm.vec3(0,0,1)) 
         draw_textured(flag_vao, flag_count, flag_colors[5], flag_model6, 32.0) 
 
-        # ведро
+        # Chum Bucket
+        # Основное ведро
         bucket_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 1.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 2.0, 1.0))
         draw_textured(bucket_vao, bucket_count, tex_chum_bucket, bucket_model, 32.0)
         
@@ -1572,6 +1652,38 @@ def main():
         thumb_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(-0.6, 6.2, -0.2)) * glm.scale(glm.mat4(1.0), glm.vec3(0.4, 0.4, 0.4))
         draw_textured(thumb_vao, thumb_count, tex_purple, thumb_model, 16.0)
         
+        # Темно-коричневая дверь
+        door_chum_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 1.0, -1.75)) * glm.rotate(glm.mat4(1.0), glm.radians(-5.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.2, 2.0, 0.1))
+        draw_textured(cube_vao, cube_count, tex_dark_brown, door_chum_model, 24.0)
+        
+        # Ручки двери (золотистые)
+        door_handle_chum_left = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(-0.15, 1.0, -1.79)) * glm.rotate(glm.mat4(1.0), glm.radians(-5.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.05, 0.2, 0.05))
+        door_handle_chum_right = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.15, 1.0, -1.79)) * glm.rotate(glm.mat4(1.0), glm.radians(-5.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.05, 0.2, 0.05))
+        draw_textured(cube_vao, cube_count, tex_gold, door_handle_chum_left, 64.0)
+        draw_textured(cube_vao, cube_count, tex_gold, door_handle_chum_right, 64.0)
+        
+        # Надпись "Chum Bucket" на ведре (ИСПОЛЬЗУЕМ ПРОЗРАЧНЫЙ ШЕЙДЕР)
+        # Переключаемся на шейдер для прозрачных текстур
+        glUseProgram(flower_prog)
+        glUniformMatrix4fv(glGetUniformLocation(flower_prog, 'view'), 1, GL_FALSE, glm.value_ptr(view))
+        glUniformMatrix4fv(glGetUniformLocation(flower_prog, 'projection'), 1, GL_FALSE, glm.value_ptr(proj))
+        
+        sign_chum_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 3.5, -1.95)) * glm.rotate(glm.mat4(1.0), glm.radians(-180.0), glm.vec3(0,1,0)) * glm.rotate(glm.mat4(1.0), glm.radians(8.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(3.5, 1.2, 0.001))
+        glActiveTexture(GL_TEXTURE0)
+        glBindTexture(GL_TEXTURE_2D, tex_chum_text)
+        glUniform1i(glGetUniformLocation(flower_prog, 'texture_diffuse1'), 0)
+        glUniformMatrix4fv(glGetUniformLocation(flower_prog, 'model'), 1, GL_FALSE, glm.value_ptr(sign_chum_model))
+        glBindVertexArray(cube_vao)
+        glDrawArrays(GL_TRIANGLES, 0, cube_count)
+        
+        # Возвращаемся к основному шейдеру
+        glUseProgram(prog)
+        glUniformMatrix4fv(glGetUniformLocation(prog,'view'),1,GL_FALSE, glm.value_ptr(view))
+        glUniformMatrix4fv(glGetUniformLocation(prog,'projection'),1,GL_FALSE, glm.value_ptr(proj))
+        glUniform3fv(glGetUniformLocation(prog,'lightPos'),1, glm.value_ptr(light_pos))
+        glUniform3fv(glGetUniformLocation(prog,'viewPos'),1, glm.value_ptr(cam_pos))
+        glUniformMatrix4fv(glGetUniformLocation(prog,'lightSpaceMatrix'),1,GL_FALSE, glm.value_ptr(light_space))
+        glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, depth_map); glUniform1i(glGetUniformLocation(prog,'shadowMap'), 1)
 
         # Домики обычных жителей 
         for i, house_pos in enumerate(house_positions):
