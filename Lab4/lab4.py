@@ -3,9 +3,10 @@ import os
 import random
 import glfw
 import numpy as np
+import ctypes
+import sys
 from OpenGL.GL import *
 from PIL import Image
-from PIL import Image, ImageDraw, ImageFont
 from pyglm import glm
 
 # Шейдеры
@@ -967,71 +968,101 @@ def main():
 
     # Создать текстуру с текстом на ней
     def create_text_texture(text, width=256, height=64, font_size=32):
-        # Создаем изображение
-        img = Image.new('RGBA', (width, height), (255, 255, 255, 0))
-        draw = ImageDraw.Draw(img)
-
-        font = ImageFont.truetype("arial.ttf", font_size)
+        try:
+            from PIL import Image, ImageDraw, ImageFont
             
-        # Получаем размеры текста
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
+            # Создаем изображение
+            img = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+            draw = ImageDraw.Draw(img)
             
-        # Центрируем текст
-        x = (width - text_width) // 2
-        y = (height - text_height) // 2
+            # Пытаемся использовать шрифт Arial, если нет - используем стандартный
+            try:
+                font = ImageFont.truetype("arial.ttf", font_size)
+            except:
+                try:
+                    font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+                except:
+                    font = ImageFont.load_default()
             
-        # Рисуем текст красным цветом
-        draw.text((x, y), text, font=font, fill=(255, 0, 0, 255))
+            # Получаем размеры текста
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
             
-        # Конвертируем в numpy массив
-        img_data = np.array(img)[::-1]
+            # Центрируем текст
+            x = (width - text_width) // 2
+            y = (height - text_height) // 2
             
-        # Создаем текстуру
-        tex = glGenTextures(1)
-        glBindTexture(GL_TEXTURE_2D, tex)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
-        glGenerateMipmap(GL_TEXTURE_2D)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            # Рисуем текст красным цветом
+            draw.text((x, y), text, font=font, fill=(255, 0, 0, 255))
+            
+            # Конвертируем в numpy массив
+            img_data = np.array(img)[::-1]
+            
+            # Создаем текстуру
+            tex = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, tex)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
+            glGenerateMipmap(GL_TEXTURE_2D)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            
+            return tex
+        except Exception as e:
+            print(f"Failed to create text texture: {e}")
+            # Возвращаем простую красную текстуру в случае ошибки
+            return create_color_texture(1.0, 0.0, 0.0)
     
     # Создать прозрачную текстуру
     def create_transparent_text_texture(text, width=512, height=128, font_size=48):
-        # Создаем полностью прозрачное изображение
-        img = Image.new('RGBA', (width, height), (255, 255, 255, 0))
-        draw = ImageDraw.Draw(img)
-
-        font = ImageFont.truetype("arial.ttf", font_size)
+        try:
+            from PIL import Image, ImageDraw, ImageFont
             
-        # Получаем размеры текста
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
+            # Создаем полностью прозрачное изображение
+            img = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+            draw = ImageDraw.Draw(img)
             
-        # Центрируем текст
-        x = (width - text_width) // 2
-        y = (height - text_height) // 2
+            # Пытаемся использовать шрифт
+            try:
+                font = ImageFont.truetype("arial.ttf", font_size)
+            except:
+                try:
+                    font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+                except:
+                    font = ImageFont.load_default()
             
-        # Рисуем ТОЛЬКО красный текст на прозрачном фоне
-        draw.text((x, y), text, font=font, fill=(255, 0, 0, 255))
+            # Получаем размеры текста
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
             
-        # Конвертируем в numpy массив
-        img_data = np.array(img)[::-1]
+            # Центрируем текст
+            x = (width - text_width) // 2
+            y = (height - text_height) // 2
             
-        # Создаем текстуру
-        tex = glGenTextures(1)
-        glBindTexture(GL_TEXTURE_2D, tex)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
-        glGenerateMipmap(GL_TEXTURE_2D)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            # Рисуем ТОЛЬКО красный текст на прозрачном фоне
+            draw.text((x, y), text, font=font, fill=(255, 0, 0, 255))
             
-        return tex
+            # Конвертируем в numpy массив
+            img_data = np.array(img)[::-1]
+            
+            # Создаем текстуру
+            tex = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, tex)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
+            glGenerateMipmap(GL_TEXTURE_2D)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            
+            return tex
+        except Exception as e:
+            print(f"Failed to create transparent text texture: {e}")
+            return create_color_texture(1.0, 0.0, 0.0, 0.0)  # Прозрачный красный
+    
     
     tex_sign_text = create_text_texture("        The\nKRUSTY KRAB", width=512, height=128, font_size=48)
     tex_chum_text = create_transparent_text_texture("    CHUM\n  BUCKET", width=512, height=128, font_size=48)
@@ -1101,7 +1132,7 @@ def main():
     glfw.set_cursor_pos_callback(window, cursor_pos)
 
     # свет - позиция для солнца в небе
-    light_pos = glm.vec3(40.0, 80.0, 40.0)
+    light_pos = glm.vec3(80.0, 100.0, 40.0)
 
     # позиции домиков
     line_z = 0.0
@@ -1653,11 +1684,11 @@ def main():
         # Чам Бакет
         # Основное ведро
         bucket_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 1.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 2.0, 1.0))
-        draw_textured(bucket_vao, bucket_count, tex_chum_bucket, bucket_model, 32.0)
+        draw_textured(bucket_vao, bucket_count, tex_chum_bucket, bucket_model, 48.0)
         
         # Крышка ведра
         lid_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 4.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 0.5, 1.0))
-        draw_textured(bucket_lid_vao, bucket_lid_count, tex_dark_gray, lid_model, 32.0)
+        draw_textured(bucket_lid_vao, bucket_lid_count, tex_dark_gray, lid_model, 48.0)
         
         # Ручка ведра
         handle_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 4.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 1.0, 1.0))
