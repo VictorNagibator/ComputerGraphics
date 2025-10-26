@@ -1,15 +1,14 @@
-from OpenGL.GL import *
+import math
+import os
+import random
 import glfw
 import numpy as np
+from OpenGL.GL import *
 from PIL import Image
-import ctypes
+from PIL import Image, ImageDraw, ImageFont
 from pyglm import glm
-import os
-import sys
-import random
-import math
 
-# ---------- Шейдеры (GLSL) ----------
+# Шейдеры
 VERT_SHADER = """#version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
@@ -206,8 +205,7 @@ DEPTH_FS = """#version 330 core
 void main(){}
 """
 
-# ---------- Помощники для шейдеров ----------
-
+# Вспомогательные функции для шейдеров
 def compile_shader(src, type):
     shader = glCreateShader(type)
     glShaderSource(shader, src)
@@ -215,9 +213,10 @@ def compile_shader(src, type):
     success = glGetShaderiv(shader, GL_COMPILE_STATUS)
     if not success:
         info = glGetShaderInfoLog(shader).decode()
-        raise RuntimeError(f"Shader compile error: {info}")
+        raise RuntimeError(f"Ошибка компиляции шейдера: {info}")
     return shader
 
+# Связать шейдеры
 def link_program(vs_src, fs_src):
     vs = compile_shader(vs_src, GL_VERTEX_SHADER)
     fs = compile_shader(fs_src, GL_FRAGMENT_SHADER)
@@ -228,12 +227,14 @@ def link_program(vs_src, fs_src):
     success = glGetProgramiv(prog, GL_LINK_STATUS)
     if not success:
         info = glGetProgramInfoLog(prog).decode()
-        raise RuntimeError(f"Program link error: {info}")
+        raise RuntimeError(f"Ошибка связки шейдеров: {info}")
     glDeleteShader(vs); glDeleteShader(fs)
     return prog
 
-# ---------- Примитивы ----------
 
+# Геометрические примитивы
+
+# Создать плоскость
 def create_plane(size=50.0, uv_scale=1.0):
     s = size
     verts = []
@@ -244,9 +245,10 @@ def create_plane(size=50.0, uv_scale=1.0):
         verts.extend([x,y,z, 0.0,1.0,0.0, u, v])
     return np.array(verts, dtype=np.float32)
 
+# Создать куб
 def create_cube():
     verts = []
-    def pushFace(a,b,c,d,n):
+    def pushFace(a,b,c,d,n): # грани
         verts.extend([*a,*n,0.0,0.0])
         verts.extend([*b,*n,1.0,1.0])
         verts.extend([*c,*n,1.0,0.0])
@@ -261,6 +263,7 @@ def create_cube():
     pushFace((-0.5,0.5,-0.5),(0.5,0.5,0.5),(0.5,0.5,-0.5),(-0.5,0.5,0.5),(0,1,0))
     return np.array(verts, dtype=np.float32)
 
+# Создать цилиндр (без крышек)
 def create_cylinder(segments=64):
     verts = []
     for i in range(segments):
@@ -280,6 +283,7 @@ def create_cylinder(segments=64):
         verts.extend([*p1,*n1, (i+1)/segments,0])
     return np.array(verts, dtype=np.float32)
 
+# Создать сферу
 def create_sphere(lat=32, lon=32):
     verts = []
     for i in range(lat):
@@ -300,6 +304,7 @@ def create_sphere(lat=32, lon=32):
             verts.extend([*p4,*p4, (j+1)/lon, (i+1)/lat])
     return np.array(verts, dtype=np.float32)
 
+# Создать диск (крышка)
 def create_disk(segments=64):
     verts = []
     center = (0.0, 0.0, 0.0)
@@ -314,6 +319,7 @@ def create_disk(segments=64):
         verts.extend([*p1, *normal, 0.5+0.5*np.cos(a1), 0.5+0.5*np.sin(a1)])
     return np.array(verts, dtype=np.float32)
 
+# Круглая рамка для окна
 def create_window_frame(outer_radius=0.5, inner_radius=0.35, thickness=0.05, segments=32):
     verts = []
     for i in range(segments):
@@ -357,6 +363,7 @@ def create_window_frame(outer_radius=0.5, inner_radius=0.35, thickness=0.05, seg
         verts.extend([*p1_inner_back, *n_bottom, 0.5+0.45*np.cos(a1), 0.5+0.45*np.sin(a1)])
     return np.array(verts, dtype=np.float32)
 
+# Квадрат (для цветочков)
 def create_flower_quad(size=1.0):
     verts = []
     s = size / 2.0
@@ -373,6 +380,7 @@ def create_flower_quad(size=1.0):
         verts.extend([*coords[i], *normal, *tex_coords[i]])
     return np.array(verts, dtype=np.float32)
 
+# Дорога по кривой (с поворотом)
 def create_curved_road(length=40.0, width=3.0, curve_radius=25.0, segments=64):
     verts = []
     start_x = -20.0
@@ -425,6 +433,7 @@ def create_curved_road(length=40.0, width=3.0, curve_radius=25.0, segments=64):
         verts.extend([right_x1, height, right_z1, *normal, u1, v_right])
     return np.array(verts, dtype=np.float32)
 
+# Прямоугольное окно
 def create_rectangular_window(width=1.0, height=1.0, frame_thickness=0.05):
     verts = []
     half_w = width / 2.0
@@ -467,8 +476,8 @@ def create_rectangular_window(width=1.0, height=1.0, frame_thickness=0.05):
     
     return np.array(verts, dtype=np.float32)
 
+# Полуцилиндр (для Красти Краба)
 def create_half_cylinder_with_caps(segments=64):
-    """Создает полуцилиндр с половинами верхнего и нижнего оснований"""
     verts = []
     
     # Основная изогнутая поверхность (половина цилиндра)
@@ -524,8 +533,8 @@ def create_half_cylinder_with_caps(segments=64):
     
     return np.array(verts, dtype=np.float32)
 
+# Столб для вывески
 def create_sign_post(height=4.0, radius=0.05):
-    """Создает столб для вывески"""
     verts = []
     segments = 16
     for i in range(segments):
@@ -545,8 +554,8 @@ def create_sign_post(height=4.0, radius=0.05):
         verts.extend([*p1,*n1, (i+1)/segments,0])
     return np.array(verts, dtype=np.float32)
 
+# Вывеска в форме ракушки
 def create_shell_sign(width=2.0, height=1.0, curvature=0.3):
-    """Создает вывеску в форме ракушки"""
     verts = []
     segments = 32
     for i in range(segments):
@@ -586,9 +595,9 @@ def create_shell_sign(width=2.0, height=1.0, curvature=0.3):
     
     return np.array(verts, dtype=np.float32)
 
+#  Прямоугольный флаг
 def create_flag(width=0.8, height=0.5):
     verts = []
-    # Прямоугольный флажок
     coords = [
         (0, 0, 0), (width, 0, 0), (width, height, 0),
         (0, 0, 0), (width, height, 0), (0, height, 0)
@@ -602,9 +611,8 @@ def create_flag(width=0.8, height=0.5):
         verts.extend([*coords[i], *normal, *tex_coords[i]])
     return np.array(verts, dtype=np.float32)
 
-
+# Веревка по параболе
 def create_rope(length=10.0, segments=32, sag=0.8):
-    """Создает веревку для гирлянды"""
     verts = []
     radius = 0.06
     half_len = length / 2
@@ -617,7 +625,7 @@ def create_rope(length=10.0, segments=32, sag=0.8):
         x0 = -half_len + (i/segments)*length
         x1 = -half_len + ((i+1)/segments)*length
         
-        # Парабола: y = a*x^2 + c, где a = -4*sag/length^2
+        # Парабола
         a = -4 * sag / (length * length)
         y0 = a * x0 * x0 + sag
         y1 = a * x1 * x1 + sag
@@ -628,7 +636,7 @@ def create_rope(length=10.0, segments=32, sag=0.8):
         p2 = (x0, y0, radius*np.sin(a0))
         p3 = (x1, y1, radius*np.sin(a1))
         
-        # Нормали (аппроксимация)
+        # Нормали
         tangent_x = x1 - x0
         tangent_y = y1 - y0
         tangent_len = np.sqrt(tangent_x*tangent_x + tangent_y*tangent_y)
@@ -650,8 +658,8 @@ def create_rope(length=10.0, segments=32, sag=0.8):
     
     return np.array(verts, dtype=np.float32)
 
+# Усеченный конус (для ведра)
 def create_bucket(height=3.0, bottom_radius=1.5, top_radius=2.0, segments=32):
-    """Создает ведро (усеченный конус)"""
     verts = []
     
     # Боковая поверхность ведра
@@ -693,8 +701,8 @@ def create_bucket(height=3.0, bottom_radius=1.5, top_radius=2.0, segments=32):
     
     return np.array(verts, dtype=np.float32)
 
+# Объемная крышка для ведра
 def create_bucket_lid(radius=2.2, thickness=0.3, segments=32):
-    """Создает крышку для ведра"""
     verts = []
     
     # Верхняя часть крышки
@@ -730,8 +738,8 @@ def create_bucket_lid(radius=2.2, thickness=0.3, segments=32):
     
     return np.array(verts, dtype=np.float32)
 
+# Ручка для ведра (полукругом)
 def create_bucket_handle(radius=1.8, thickness=0.1, segments=32):
-    """Создает ручку для ведра (полукруг)"""
     verts = []
     
     for i in range(segments//2):
@@ -759,15 +767,15 @@ def create_bucket_handle(radius=1.8, thickness=0.1, segments=32):
     
     return np.array(verts, dtype=np.float32)
 
+# Простой кулак
 def create_fist(scale=1.0):
-    """Создает упрощенную модель кулака"""
     verts = []
     
     # Основная часть кулака (сфера)
     fist_data = create_sphere(16, 16)
     for i in range(0, len(fist_data), 8):
         x, y, z, nx, ny, nz, u, v = fist_data[i:i+8]
-        # Немного деформируем сферу чтобы сделать更像 кулак
+        # Немного деформируем сферу чтобы сделать кулак
         scale_x = scale * 0.8
         scale_y = scale * 1.2
         scale_z = scale * 0.9
@@ -775,8 +783,8 @@ def create_fist(scale=1.0):
     
     return np.array(verts, dtype=np.float32)
 
+# Большой палец кулака
 def create_thumb(scale=1.0):
-    """Создает большой палец для кулака"""
     verts = []
     
     # Большой палец (маленькая сфера)
@@ -792,8 +800,8 @@ def create_thumb(scale=1.0):
     
     return np.array(verts, dtype=np.float32)
 
+# Полусфера для камней
 def create_hemisphere(radius=1.0, segments=16):
-    """Создает полусферу для камней"""
     verts = []
     
     for i in range(segments//2):
@@ -818,6 +826,7 @@ def create_hemisphere(radius=1.0, segments=16):
     
     return np.array(verts, dtype=np.float32)
 
+# Загрузить текстуру
 def load_texture(path):
     img = Image.open(path).convert('RGBA')
     img_data = np.array(img)[::-1]
@@ -829,13 +838,12 @@ def load_texture(path):
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-    try:
-        max_aniso = glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY, min(8.0, max_aniso))
-    except Exception:
-        pass
+    max_aniso = glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY, min(8.0, max_aniso))
+
     return tex
 
+#  Создать VAO (Vertex Array Object)
 def make_vao(data, stride_elems=8):
     vao = glGenVertexArrays(1)
     vbo = glGenBuffers(1)
@@ -850,19 +858,20 @@ def make_vao(data, stride_elems=8):
     glEnableVertexAttribArray(2)
     glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,stride,ctypes.c_void_p(6*ctypes.sizeof(ctypes.c_float)))
     glBindVertexArray(0)
-    return vao, vbo, int(len(data)//stride_elems)
+    return vao, vbo, int(len(data) // stride_elems)
 
+# Простая модель для параллелипепда
 def model_for_box(center, size):
     return glm.translate(glm.mat4(1.0), glm.vec3(*center)) * glm.scale(glm.mat4(1.0), glm.vec3(*size))
 
 def main():
     if not glfw.init():
-        print('GLFW init failed')
+        print('Ошибка загрузки OpenGL!')
         return
     width, height = 1280, 720
     window = glfw.create_window(width, height, 'Лабораторная работа 4 - Бикини Боттом', None, None)
     if not window:
-        print('Window creation failed')
+        print('Ошибка создания окна!')
         glfw.terminate(); return
     glfw.make_context_current(window)
     glfw.swap_interval(1)
@@ -874,7 +883,7 @@ def main():
     flower_prog = link_program(FLOWER_VERT_SHADER, FLOWER_FRAG_SHADER)
     sun_prog = link_program(SUN_VERT_SHADER, SUN_FRAG_SHADER)
 
-    # создать меши
+    # создать полигоны
     plane_data = create_plane(80.0, uv_scale=30.0)
     plane_vao, _, plane_count = make_vao(plane_data)
     cube_data = create_cube()
@@ -935,7 +944,8 @@ def main():
     tex_metal_house = load_texture(os.path.join(texdir, 'metal_house.png'))
     tex_krusty_krab = load_texture(os.path.join(texdir, 'krusty_krab.png'))
     tex_rock_dec = load_texture(os.path.join(texdir, 'rock_dec.png'))
-    
+
+    # Вспомогательная функция для создания текстуры по цвету
     def create_color_texture(r, g, b, a=1.0):
         data = np.array([[int(r*255), int(g*255), int(b*255), int(a*255)]], dtype=np.uint8)
         tex = glGenTextures(1)
@@ -945,112 +955,83 @@ def main():
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
         return tex
     
-    tex_window_blue = create_color_texture(0.5, 0.7, 1.0)
-    tex_window_frame = create_color_texture(0.2, 0.3, 0.8)
+    tex_window_blue = create_color_texture(0.5, 0.7, 1.0) # Окно обычных зданий
+    tex_window_frame = create_color_texture(0.2, 0.3, 0.8) # Рамка окна
     tex_glass_door = create_color_texture(0.7, 0.9, 1.0, 0.8)  # Стеклянная дверь
-    tex_gold = create_color_texture(0.9, 0.7, 0.1)  # Золотистый цвет
-    tex_shell = create_color_texture(1.0, 0.9, 0.8)     # Светлый цвет ракушки
-    tex_purple = create_color_texture(0.5, 0.3, 0.7)    # Фиолетовый цвет для кулака
+    tex_gold = create_color_texture(0.9, 0.7, 0.1) # Золотистый цвет
+    tex_shell = create_color_texture(1.0, 0.9, 0.8) # Светлый цвет ракушки
+    tex_purple = create_color_texture(0.5, 0.3, 0.7)  # Фиолетовый цвет для кулака
     tex_dark_gray = create_color_texture(0.3, 0.3, 0.3) # Темно-серый для ведра
-    tex_chum_bucket = create_color_texture(0.2, 0.2, 0.4) # Темно-синий для Chum Bucket
-    tex_dark_brown = create_color_texture(0.4, 0.3, 0.2)  # Темно-коричневый для дверей
+    tex_chum_bucket = create_color_texture(0.2, 0.2, 0.4) # Темно-синий для Чам Бакета
+    tex_dark_brown = create_color_texture(0.4, 0.3, 0.2) # Темно-коричневый для дверей
 
-    # Создаем текстуру с текстом "The Krusty Krab"
+    # Создать текстуру с текстом на ней
     def create_text_texture(text, width=256, height=64, font_size=32):
-        try:
-            from PIL import Image, ImageDraw, ImageFont
+        # Создаем изображение
+        img = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+        draw = ImageDraw.Draw(img)
+
+        font = ImageFont.truetype("arial.ttf", font_size)
             
-            # Создаем изображение
-            img = Image.new('RGBA', (width, height), (255, 255, 255, 0))
-            draw = ImageDraw.Draw(img)
+        # Получаем размеры текста
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
             
-            # Пытаемся использовать шрифт Arial, если нет - используем стандартный
-            try:
-                font = ImageFont.truetype("arial.ttf", font_size)
-            except:
-                try:
-                    font = ImageFont.truetype("DejaVuSans.ttf", font_size)
-                except:
-                    font = ImageFont.load_default()
+        # Центрируем текст
+        x = (width - text_width) // 2
+        y = (height - text_height) // 2
             
-            # Получаем размеры текста
-            bbox = draw.textbbox((0, 0), text, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
+        # Рисуем текст красным цветом
+        draw.text((x, y), text, font=font, fill=(255, 0, 0, 255))
             
-            # Центрируем текст
-            x = (width - text_width) // 2
-            y = (height - text_height) // 2
+        # Конвертируем в numpy массив
+        img_data = np.array(img)[::-1]
             
-            # Рисуем текст красным цветом
-            draw.text((x, y), text, font=font, fill=(255, 0, 0, 255))
-            
-            # Конвертируем в numpy массив
-            img_data = np.array(img)[::-1]
-            
-            # Создаем текстуру
-            tex = glGenTextures(1)
-            glBindTexture(GL_TEXTURE_2D, tex)
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
-            glGenerateMipmap(GL_TEXTURE_2D)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-            
-            return tex
-        except Exception as e:
-            print(f"Failed to create text texture: {e}")
-            # Возвращаем простую красную текстуру в случае ошибки
-            return create_color_texture(1.0, 0.0, 0.0)
+        # Создаем текстуру
+        tex = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, tex)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
+        glGenerateMipmap(GL_TEXTURE_2D)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
     
-    # СОЗДАЕМ ПРОЗРАЧНУЮ ТЕКСТУРУ ДЛЯ "Chum Bucket"
+    # Создать прозрачную текстуру
     def create_transparent_text_texture(text, width=512, height=128, font_size=48):
-        try:
-            from PIL import Image, ImageDraw, ImageFont
+        # Создаем полностью прозрачное изображение
+        img = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+        draw = ImageDraw.Draw(img)
+
+        font = ImageFont.truetype("arial.ttf", font_size)
             
-            # Создаем полностью прозрачное изображение
-            img = Image.new('RGBA', (width, height), (255, 255, 255, 0))
-            draw = ImageDraw.Draw(img)
+        # Получаем размеры текста
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
             
-            # Пытаемся использовать шрифт
-            try:
-                font = ImageFont.truetype("arial.ttf", font_size)
-            except:
-                try:
-                    font = ImageFont.truetype("DejaVuSans.ttf", font_size)
-                except:
-                    font = ImageFont.load_default()
+        # Центрируем текст
+        x = (width - text_width) // 2
+        y = (height - text_height) // 2
             
-            # Получаем размеры текста
-            bbox = draw.textbbox((0, 0), text, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
+        # Рисуем ТОЛЬКО красный текст на прозрачном фоне
+        draw.text((x, y), text, font=font, fill=(255, 0, 0, 255))
             
-            # Центрируем текст
-            x = (width - text_width) // 2
-            y = (height - text_height) // 2
+        # Конвертируем в numpy массив
+        img_data = np.array(img)[::-1]
             
-            # Рисуем ТОЛЬКО красный текст на прозрачном фоне
-            draw.text((x, y), text, font=font, fill=(255, 0, 0, 255))
+        # Создаем текстуру
+        tex = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, tex)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
+        glGenerateMipmap(GL_TEXTURE_2D)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
             
-            # Конвертируем в numpy массив
-            img_data = np.array(img)[::-1]
-            
-            # Создаем текстуру
-            tex = glGenTextures(1)
-            glBindTexture(GL_TEXTURE_2D, tex)
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
-            glGenerateMipmap(GL_TEXTURE_2D)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-            
-            return tex
-        except Exception as e:
-            print(f"Failed to create transparent text texture: {e}")
-            return create_color_texture(1.0, 0.0, 0.0, 0.0)  # Прозрачный красный
+        return tex
     
     tex_sign_text = create_text_texture("        The\nKRUSTY KRAB", width=512, height=128, font_size=48)
     tex_chum_text = create_transparent_text_texture("    CHUM\n  BUCKET", width=512, height=128, font_size=48)
@@ -1067,7 +1048,7 @@ def main():
     
     tex_rope = create_color_texture(0.5, 0.4, 0.3)  # Цвет веревки
 
-    # теневой фреймбуфер - УВЕЛИЧИВАЕМ РАЗРЕШЕНИЕ ДЛЯ ЛУЧШИХ ТЕНЕЙ
+    # теневой фреймбуфер
     SHADOW_W, SHADOW_H = 8192, 8192 
     depth_map_fbo = glGenFramebuffers(1)
     depth_map = glGenTextures(1)
@@ -1082,8 +1063,6 @@ def main():
     glBindFramebuffer(GL_FRAMEBUFFER, depth_map_fbo)
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth_map, 0)
     glDrawBuffer(GL_NONE); glReadBuffer(GL_NONE)
-    if glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE:
-        print('Depth framebuffer not complete')
     glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
     glEnable(GL_DEPTH_TEST)
@@ -1101,6 +1080,7 @@ def main():
     mouse_sens = 0.12
     last_time = glfw.get_time()
 
+    # Обработка перемещения курсора
     def cursor_pos(window, xpos, ypos):
         nonlocal lastX, lastY, yaw, pitch, cam_front, first_mouse
         if first_mouse:
@@ -1129,7 +1109,7 @@ def main():
     pos_squid = glm.vec3(0.0, 0.0, line_z)
     pos_sponge = glm.vec3(8.0, 0.0, line_z)
     pos_krusty_krab = glm.vec3(50.0, 0.0, line_z)
-    pos_chum_bucket = glm.vec3(50.0, 0.0, 20.0)  # Позиция Chum Bucket напротив Krusty Krab
+    pos_chum_bucket = glm.vec3(50.0, 0.0, 20.0)
     
     # Позиции для цветков в небе
     flower_positions = []
@@ -1155,7 +1135,7 @@ def main():
     # случайная текстура домика
     random_texture_for_houses = [tex_metal_house if random.randint(0,1) == 1 else tex_metal for _ in range(len(house_positions))]
     
-    # Генерируем позиции для декораций ТОЛЬКО в области z <= -10
+    # Генерируем позиции для декораций только в области z <= -10
     rock_positions = []
 
     # Генерация камней (17 штук)
@@ -1166,6 +1146,7 @@ def main():
         rotation = random.uniform(0, 360)
         rock_positions.append((glm.vec3(x, 0.0, z), scale, rotation))
 
+    # Обработка движения на WASD
     def process_movement(delta):
         nonlocal cam_pos
         speed = movement_speed * delta
@@ -1195,9 +1176,9 @@ def main():
         process_movement(delta)
         w, h = glfw.get_framebuffer_size(window)
 
-        # 1) рендер теневой карты - УВЕЛИЧИВАЕМ ОБЛАСТЬ ТЕНЕЙ
-        near_plane, far_plane = 1.0, 200.0  # Увеличиваем far_plane
-        light_proj = glm.ortho(-100.0, 100.0, -100.0, 100.0, near_plane, far_plane)  # Увеличиваем область
+        # 1) рендер теневой карты
+        near_plane, far_plane = 1.0, 200.0
+        light_proj = glm.ortho(-100.0, 100.0, -100.0, 100.0, near_plane, far_plane)
         light_view = glm.lookAt(light_pos, glm.vec3(0.0,0.0,0.0), glm.vec3(0.0,1.0,0.0))
         light_space = light_proj * light_view
         glViewport(0,0,SHADOW_W,SHADOW_H)
@@ -1206,6 +1187,7 @@ def main():
         glUseProgram(depth_prog)
         glUniformMatrix4fv(glGetUniformLocation(depth_prog, 'lightSpaceMatrix'), 1, GL_FALSE, glm.value_ptr(light_space))
 
+        # обработка теней
         def render_depth():
             # Плоскость
             model = glm.translate(glm.mat4(1.0), glm.vec3(0.0,-0.01,0.0))
@@ -1531,16 +1513,17 @@ def main():
         glUniform3fv(glGetUniformLocation(prog,'viewPos'),1, glm.value_ptr(cam_pos))
         glUniformMatrix4fv(glGetUniformLocation(prog,'lightSpaceMatrix'),1,GL_FALSE, glm.value_ptr(light_space))
 
-        # bind shadow map
+        # связываем тени
         glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, depth_map); glUniform1i(glGetUniformLocation(prog,'shadowMap'), 1)
 
+        # вспомогательная функция для отрисовки с текстурой
         def draw_textured(vao, count, tex, model, shininess=32.0):
             glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, tex); glUniform1i(glGetUniformLocation(prog,'texture_diffuse1'), 0)
             glUniform1f(glGetUniformLocation(prog,'materialShininess'), shininess)
             glUniformMatrix4fv(glGetUniformLocation(prog,'model'),1,GL_FALSE, glm.value_ptr(model))
             glBindVertexArray(vao); glDrawArrays(GL_TRIANGLES, 0, count)
 
-        # plane (sand)
+        # плоскость (песок)
         draw_textured(plane_vao, plane_count, tex_sand, glm.translate(glm.mat4(1.0), glm.vec3(0.0,-0.01,0.0)), 8.0)
 
         # Главная дорога
@@ -1571,7 +1554,7 @@ def main():
         under_krusty_krabs = glm.translate(glm.mat4(1.0), glm.vec3(50.0, 0.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(12.0, 0.01, 10.0))
         draw_textured(cube_vao, cube_count, tex_road, under_krusty_krabs, 16.0)
 
-        # Красти Крабс - форма сундука
+        # Красти Крабс
         # Основное здание (сундук)
         krusty_krab_base = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 0.0, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(7.0, 5.0, 5.0))
         draw_textured(cube_vao, cube_count, tex_krusty_krab, krusty_krab_base, 32.0)
@@ -1594,13 +1577,13 @@ def main():
         door_krab = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 1.0, 2.51)) * glm.scale(glm.mat4(1.0), glm.vec3(1.5, 2.0, 0.1))
         draw_textured(cube_vao, cube_count, tex_glass_door, door_krab, 64.0)
 
-        # 1) Ручки для стеклянной двери (золотистые)
+        # Ручки для стеклянной двери (золотистые)
         door_handle_left = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-0.1, 1.0, 2.55)) * glm.scale(glm.mat4(1.0), glm.vec3(0.05, 0.2, 0.05))
         door_handle_right = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.1, 1.0, 2.55)) * glm.scale(glm.mat4(1.0), glm.vec3(0.05, 0.2, 0.05))
         draw_textured(cube_vao, cube_count, tex_gold, door_handle_left, 64.0)
         draw_textured(cube_vao, cube_count, tex_gold, door_handle_right, 64.0)
 
-        # 2) Деревянное основание внизу Красти Крабс
+        # Деревянное основание внизу Красти Крабс
         foundation_front1 = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(-2.3, 0.25, 2.6)) * glm.scale(glm.mat4(1.0), glm.vec3(2.9, 0.5, 0.3))
         foundation_front2 = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(2.3, 0.25, 2.6)) * glm.scale(glm.mat4(1.0), glm.vec3(2.9, 0.5, 0.3))
         foundation_back = glm.translate(glm.mat4(1.0), pos_krusty_krab + glm.vec3(0.0, 0.25, -2.6)) * glm.scale(glm.mat4(1.0), glm.vec3(7.5, 0.5, 0.3))
@@ -1667,7 +1650,7 @@ def main():
                        glm.rotate(glm.mat4(1.0), glm.radians(25.0), glm.vec3(0,0,1)) 
         draw_textured(flag_vao, flag_count, flag_colors[5], flag_model6, 32.0) 
 
-        # Chum Bucket
+        # Чам Бакет
         # Основное ведро
         bucket_model = glm.translate(glm.mat4(1.0), pos_chum_bucket + glm.vec3(0.0, 1.5, 0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.0, 2.0, 1.0))
         draw_textured(bucket_vao, bucket_count, tex_chum_bucket, bucket_model, 32.0)
@@ -1698,7 +1681,7 @@ def main():
         draw_textured(cube_vao, cube_count, tex_gold, door_handle_chum_left, 64.0)
         draw_textured(cube_vao, cube_count, tex_gold, door_handle_chum_right, 64.0)
         
-        # Надпись "Chum Bucket" на ведре (ИСПОЛЬЗУЕМ ПРОЗРАЧНЫЙ ШЕЙДЕР)
+        # Надпись "Chum Bucket" на ведре
         # Переключаемся на шейдер для прозрачных текстур
         glUseProgram(flower_prog)
         glUniformMatrix4fv(glGetUniformLocation(flower_prog, 'view'), 1, GL_FALSE, glm.value_ptr(view))
@@ -1784,7 +1767,7 @@ def main():
         road_squid5 = glm.translate(glm.mat4(1.0), glm.vec3(0.0, 0.0, 6.0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.7, 0.1, 0.3))
         draw_textured(cube_vao, cube_count, tex_road, road_squid5, 16.0)
 
-        # Patrick (rock) - слева
+        # Дом Патрика - слева
         model_patrick = glm.translate(glm.mat4(1.0), pos_patrick + glm.vec3(0.0,0.0,0.0)) * glm.scale(glm.mat4(1.0), glm.vec3(1.8,1.6,1.8))
         draw_textured(sph_vao, sph_count, tex_rock, model_patrick, 6.0)
 
@@ -1797,7 +1780,7 @@ def main():
         weathervane_horizontal = model_for_box((pos_patrick.x, pos_patrick.y + 1.92, pos_patrick.z), (0.6, 0.1, 0.1))
         draw_textured(cube_vao, cube_count, tex_wood, weathervane_horizontal, 24.0)
 
-        # Squidward (центр): увеличенный цилиндр + уши + монобровь + нос + крыша + окна + дверь
+        # дом Сквидварда (центр): цилиндр + уши + монобровь + нос + крыша + окна + дверь
         model_sq_base = glm.translate(glm.mat4(1.0), pos_squid) * glm.scale(glm.mat4(1.0), glm.vec3(1.8,7.0,1.8))
         draw_textured(cyl_vao, cyl_count, tex_squid, model_sq_base, 12.0)
         
@@ -1827,7 +1810,7 @@ def main():
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_left, 64.0)
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_right, 64.0)
         
-        # Стекла окон (немного смещены назад относительно рамок)
+        # Стекла окон
         window_glass_left = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(-0.45, 2.2, 0.86)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.35,0.35,0.35))
         window_glass_right = glm.translate(glm.mat4(1.0), pos_squid + glm.vec3(0.45, 2.2, 0.86)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.35,0.35,0.35))
         
@@ -1838,7 +1821,7 @@ def main():
         door_squid = model_for_box((pos_squid.x, pos_squid.y + 0.5, pos_squid.z + 0.88), (0.6,1.2,0.05))
         draw_textured(cube_vao, cube_count, tex_wood, door_squid, 24.0)
 
-        # SpongeBob (ананас) — половина эллипсоида + листья сверху + окна + дверь
+        # Дом Губки Боба (ананас) — половина эллипсоида + листья сверху + окна + дверь
         model_sponge = glm.translate(glm.mat4(1.0), pos_sponge) * glm.scale(glm.mat4(1.0), glm.vec3(1.5,2.8,1.5))
         draw_textured(sph_vao, sph_count, tex_pine, model_sponge, 32.0)
         
@@ -1855,11 +1838,11 @@ def main():
         window_sponge_left = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(-0.8, 2.0, 0.75))  * glm.rotate(glm.mat4(1.0), glm.radians(45.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-50.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
         window_sponge_right = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.7, 1.3, 1.15)) * glm.rotate(glm.mat4(1.0), glm.radians(-65.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-33.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
         
-        # Рамки окон (объемные)
+        # Рамки окон
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_sponge_left, 64.0)
         draw_textured(window_frame_vao, window_frame_count, tex_window_frame, window_sponge_right, 64.0)
         
-        # Стекла окон (немного смещены назад)
+        # Стекла окон
         window_glass_sponge_left = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(-0.8, 2.0, 0.75)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.rotate(glm.mat4(1.0), glm.radians(45.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-33.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
         window_glass_sponge_right = glm.translate(glm.mat4(1.0), pos_sponge + glm.vec3(0.7, 1.3, 1.15)) * glm.rotate(glm.mat4(1.0), glm.radians(90.0), glm.vec3(1,0,0)) * glm.rotate(glm.mat4(1.0), glm.radians(-30.0), glm.vec3(0,0,1)) * glm.rotate(glm.mat4(1.0), glm.radians(-10.0), glm.vec3(1,0,0)) * glm.scale(glm.mat4(1.0), glm.vec3(0.6,0.6,0.6))
         
