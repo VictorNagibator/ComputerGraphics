@@ -497,7 +497,7 @@ class ImageViewer(QMainWindow):
                 threshold = self.binary_threshold_slider.value()
                 _, binary = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
             elif method == 'Адаптивный порог':
-                # Адаптивная бинаризация с гауссовским усреднением
+                # Адаптивная бинаризация
                 binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
                                              cv2.THRESH_BINARY, 11, 2)
             else:  # Метод Оцу
