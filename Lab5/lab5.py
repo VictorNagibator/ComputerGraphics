@@ -112,7 +112,7 @@ class ImageViewer(QMainWindow):
         brightness_layout = QHBoxLayout()
         brightness_layout.addWidget(QLabel('Яркость:'))
         self.brightness_slider = QSlider(Qt.Horizontal)
-        self.brightness_slider.setRange(-100, 100)
+        self.brightness_slider.setRange(-255, 255)
         self.brightness_slider.setValue(0)
         self.brightness_slider.sliderPressed.connect(self.slider_pressed)
         self.brightness_slider.sliderReleased.connect(self.slider_released)
@@ -123,9 +123,9 @@ class ImageViewer(QMainWindow):
         
         # Слайдер для регулировки контрастности
         contrast_layout = QHBoxLayout()
-        contrast_layout.addWidget(QLabel('Контрастность:'))
+        contrast_layout.addWidget(QLabel('Контрастность (* 10^2):'))
         self.contrast_slider = QSlider(Qt.Horizontal)
-        self.contrast_slider.setRange(50, 200)
+        self.contrast_slider.setRange(0, 200)
         self.contrast_slider.setValue(100)
         self.contrast_slider.sliderPressed.connect(self.slider_pressed)
         self.contrast_slider.sliderReleased.connect(self.slider_released)
