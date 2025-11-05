@@ -2,99 +2,113 @@ import sys
 import numpy as np
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QLabel, QFileDialog, QSlider, QComboBox, QGroupBox,
-                             QMessageBox, QCheckBox)
+                             QMessageBox)
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QPen
-from PyQt5.QtCore import Qt, QRect, QTimer
+from PyQt5.QtCore import Qt, QTimer
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-import matplotlib.ticker as ticker
+import matplotlib.ticker as mticker
 import cv2
 
 class ImageViewer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.initUI()
+        
         self.original_image = None
         self.current_image = None
-        self.original_array = None
-        self.current_array = None
-        self.selection_rect = None
-        self.drawing_selection = False
-        self.selection_start = None
-        self.selection_active = False
+        self.original_array = None  # Оригинальное изображение в формате numpy array
+        self.current_array = None   # Текущее изображение после преобразований
+        self.selection_rect = None  # Координаты выделенной области
+        self.drawing_selection = False  # Флаг режима рисования выделения
+        self.selection_start = None # Начальная точка выделения
+        self.selection_active = False # Флаг активного выделения
         
-        # Параметры преобразований
-        self.brightness_value = 0
-        self.contrast_value = 100
+        # Параметры преобразований изображения
+        self.brightness_value = 0 # Значение яркости (-100 до 100)
+        self.contrast_value = 100 # Значение контрастности (50 до 200)
         
-        # Для гистограммы
-        self.hist_initialized = False
-        self.hist_bars = None
+        # Переменные для работы с гистограммой
+        self.hist_initialized = False # Флаг инициализации гистограммы
+        self.hist_bars_r = None # Ссылки на столбцы гистограммы красного канала
+        self.hist_bars_g = None # Ссылки на столбцы гистограммы зеленого канала
+        self.hist_bars_b = None # Ссылки на столбцы гистограммы синего канала
+        self.hist_bars_y = None # Ссылки на столбцы гистограммы яркости
         
-        # Таймер для отложенного обновления
+        # Таймер для отложенного обновления (иначе тормозит)
         self.update_timer = QTimer()
         self.update_timer.setSingleShot(True)
         self.update_timer.timeout.connect(self.apply_all_transforms)
         
     def initUI(self):
-        self.setWindowTitle('Обработка растровых изображений')
+        # Настройка основного окна приложения
+        self.setWindowTitle('Лабораторная работа 5')
         self.setGeometry(100, 100, 1200, 800)
         
+        # Создание центрального виджета
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
+        # горизонтальное разделение на левую и правую панели
         main_layout = QHBoxLayout()
         central_widget.setLayout(main_layout)
         
-        # Левая панель - изображение
+        # Левая панель для отображения изображения
         left_panel = QVBoxLayout()
         
+        # Метка для отображения изображения
         self.image_label = QLabel('Изображение не загружено')
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setMinimumSize(600, 400)
         self.image_label.setStyleSheet("border: 1px solid gray;")
+        # Назначение обработчиков событий мыши для выделения области
         self.image_label.mousePressEvent = self.image_mouse_press
         self.image_label.mouseMoveEvent = self.image_mouse_move
         self.image_label.mouseReleaseEvent = self.image_mouse_release
         left_panel.addWidget(self.image_label)
         
-        # Кнопки управления
+        # Панель с кнопками управления
         btn_layout = QHBoxLayout()
         
+        # Кнопка загрузки изображения
         load_btn = QPushButton('Загрузить изображение')
         load_btn.clicked.connect(self.load_image)
         btn_layout.addWidget(load_btn)
         
+        # Кнопка сброса изменений
         reset_btn = QPushButton('Сбросить изменения')
         reset_btn.clicked.connect(self.reset_image)
         btn_layout.addWidget(reset_btn)
         
+        # Кнопка включения режима выделения
         select_btn = QPushButton('Выделить область')
         select_btn.clicked.connect(self.toggle_selection)
         btn_layout.addWidget(select_btn)
         
+        # Кнопка сброса выделения
         clear_select_btn = QPushButton('Сбросить выделение')
         clear_select_btn.clicked.connect(self.clear_selection)
         btn_layout.addWidget(clear_select_btn)
         
         left_panel.addLayout(btn_layout)
         
-        # Правая панель - управление
+        # Правая панель - элементы управления преобразованиями
         right_panel = QVBoxLayout()
         
-        # Группа гистограммы
-        hist_group = QGroupBox('Гистограмма яркости')
+        # Группа для гистограмм
+        hist_group = QGroupBox('Гистограммы')
         hist_layout = QVBoxLayout()
+        # Создание канваса для гистограмм
         self.hist_canvas = MplCanvas(self, width=6, height=4, dpi=100)
         hist_layout.addWidget(self.hist_canvas)
         hist_group.setLayout(hist_layout)
         right_panel.addWidget(hist_group)
         
-        # Группа преобразований яркости/контрастности
+        # Группа для управления яркостью и контрастностью
         bc_group = QGroupBox('Яркость и контрастность')
         bc_layout = QVBoxLayout()
         
-        # Яркость
+        # Слайдер для регулировки яркости
         brightness_layout = QHBoxLayout()
         brightness_layout.addWidget(QLabel('Яркость:'))
         self.brightness_slider = QSlider(Qt.Horizontal)
@@ -107,7 +121,7 @@ class ImageViewer(QMainWindow):
         brightness_layout.addWidget(self.brightness_value_label)
         bc_layout.addLayout(brightness_layout)
         
-        # Контрастность
+        # Слайдер для регулировки контрастности
         contrast_layout = QHBoxLayout()
         contrast_layout.addWidget(QLabel('Контрастность:'))
         self.contrast_slider = QSlider(Qt.Horizontal)
@@ -119,15 +133,18 @@ class ImageViewer(QMainWindow):
         self.contrast_value_label = QLabel('100')
         contrast_layout.addWidget(self.contrast_value_label)
         bc_layout.addLayout(contrast_layout)
-        
+
+        self.brightness_slider.valueChanged.connect(self.on_brightness_changed)
+        self.contrast_slider.valueChanged.connect(self.on_contrast_changed)
+
         bc_group.setLayout(bc_layout)
         right_panel.addWidget(bc_group)
         
-        # Группа изменения цветности
+        # Группа для изменения цветности изображения
         color_group = QGroupBox('Изменение цветности')
         color_layout = QVBoxLayout()
         
-        # Бинаризация
+        # Элементы управления бинаризацией
         binary_layout = QVBoxLayout()
         binary_method_layout = QHBoxLayout()
         binary_method_layout.addWidget(QLabel('Метод бинаризации:'))
@@ -136,6 +153,7 @@ class ImageViewer(QMainWindow):
         self.binary_combo.currentTextChanged.connect(self.on_binary_method_changed)
         binary_method_layout.addWidget(self.binary_combo)
         
+        # Layout для элементов порога бинаризации
         self.threshold_layout = QHBoxLayout()
         self.threshold_label = QLabel('Порог:')
         self.threshold_layout.addWidget(self.threshold_label)
@@ -150,13 +168,14 @@ class ImageViewer(QMainWindow):
         binary_layout.addLayout(binary_method_layout)
         binary_layout.addLayout(self.threshold_layout)
         
+        # Кнопка применения бинаризации
         apply_binary_btn = QPushButton('Применить бинаризацию')
         apply_binary_btn.clicked.connect(self.apply_binarization)
         binary_layout.addWidget(apply_binary_btn)
         
         color_layout.addLayout(binary_layout)
         
-        # Кнопки преобразований
+        # Кнопки других преобразований цветности
         transform_layout = QHBoxLayout()
         
         gray_btn = QPushButton('Оттенки серого')
@@ -167,103 +186,171 @@ class ImageViewer(QMainWindow):
         negative_btn.clicked.connect(self.apply_negative)
         transform_layout.addWidget(negative_btn)
         
+        # Кнопка для преобразования гистограмм (выравнивание)
+        hist_equalize_btn = QPushButton('Выровнять гистограммы')
+        hist_equalize_btn.clicked.connect(self.apply_histogram_equalization)
+        transform_layout.addWidget(hist_equalize_btn)
+        
         color_layout.addLayout(transform_layout)
         color_group.setLayout(color_layout)
         right_panel.addWidget(color_group)
         
-        main_layout.addLayout(left_panel, 2)
+        # Добавление левой и правой панелей в основной layout
+        main_layout.addLayout(left_panel, 2) 
         main_layout.addLayout(right_panel, 1)
         
-        # Изначально скрываем ползунок порога для нефиксированных методов
+        # Изначальная настройка видимости элементов бинаризации
         self.on_binary_method_changed(self.binary_combo.currentText())
     
+    # Обработчик изменения метода бинаризации
     def on_binary_method_changed(self, method):
-        """Обработчик изменения метода бинаризации"""
         if method == 'Фиксированный порог':
+            # Для фиксированного порога показываем элементы управления порогом
             self.threshold_label.setVisible(True)
             self.binary_threshold_slider.setVisible(True)
             self.binary_threshold_label.setVisible(True)
         else:
+            # Для адаптивных методов скрываем элементы управления порогом
             self.threshold_label.setVisible(False)
             self.binary_threshold_slider.setVisible(False)
             self.binary_threshold_label.setVisible(False)
-    
+
+    # обработчики обновления слайдеров
+    def on_brightness_changed(self, v):
+        self.brightness_value_label.setText(str(v))
+        self.brightness_value = v
+        self.update_timer.start(150) 
+
+    def on_contrast_changed(self, v):
+        self.contrast_value_label.setText(str(v))
+        self.contrast_value = v
+        self.update_timer.start(150)
+
+    # Загрузка изображения из файла
     def load_image(self):
         file_name, _ = QFileDialog.getOpenFileName(
             self, "Выберите изображение", "", 
             "Image Files (*.png *.jpg *.jpeg *.bmp *.tiff)")
         
         if file_name:
-            # Загружаем через OpenCV для быстрой обработки
+            # Загружаем изображение через OpenCV
             self.original_array = cv2.imread(file_name)
             if self.original_array is None:
                 QMessageBox.warning(self, "Ошибка", "Не удалось загрузить изображение")
                 return
             
-            # Конвертируем из BGR в RGB
+            # Конвертируем из BGR (формат OpenCV) в RGB (формат для отображения)
             self.original_array = cv2.cvtColor(self.original_array, cv2.COLOR_BGR2RGB)
             self.current_array = self.original_array.copy()
             
+            # Обновляем интерфейс
             self.update_display()
             self.reset_sliders()
             self.clear_selection()
             self.init_histogram()
     
+    # Инициализация гистограмм при загрузке изображения
     def init_histogram(self):
-        """Инициализирует гистограмму при загрузке изображения"""
         if self.current_array is None:
             return
-            
-        # Вычисляем яркость по формуле из лекции
-        r, g, b = self.current_array[:,:,0], self.current_array[:,:,1], self.current_array[:,:,2]
-        brightness = 0.299 * r + 0.5876 * g + 0.114 * b
+
+        # Получаем каналы изображения
+        r = self.current_array[:, :, 0].flatten()
+        g = self.current_array[:, :, 1].flatten()
+        b = self.current_array[:, :, 2].flatten()
+
+        # Вычисляем яркость по формуле из лекции Y = 0.299R + 0.5876G + 0.114B
+        brightness = 0.299 * self.current_array[:, :, 0] + 0.5876 * self.current_array[:, :, 1] + 0.114 * self.current_array[:, :, 2]
         brightness = brightness.flatten()
-        
-        # Строим гистограмму
-        self.hist_canvas.axes.clear()
-        counts, bins, patches = self.hist_canvas.axes.hist(brightness, bins=256, range=(0, 255), alpha=0.7, color='blue')
-        self.hist_canvas.axes.set_xlabel('Яркость')
-        self.hist_canvas.axes.set_ylabel('Частота')
-        self.hist_canvas.axes.set_title('Гистограмма яркости')
-        
-        # Сохраняем ссылки на столбцы гистограммы для последующего обновления
-        self.hist_bars = patches
+
+        # небольшие параметры шрифтов
+        title_font = 10
+        label_font = 9
+        tick_font = 8
+
+        # Очищаем_axes и строим
+        for ax in self.hist_canvas.axes:
+            ax.clear()
+
+        counts_r, bins_r, patches_r = self.hist_canvas.axes[0].hist(r, bins=256, range=(0, 255), alpha=0.7, color='red')
+        self.hist_canvas.axes[0].set_title('Красный канал', fontsize=title_font)
+        self.hist_canvas.axes[0].set_xlabel('Яркость', fontsize=label_font)
+        self.hist_canvas.axes[0].set_ylabel('Частота', fontsize=label_font)
+
+        counts_g, bins_g, patches_g = self.hist_canvas.axes[1].hist(g, bins=256, range=(0, 255), alpha=0.7, color='green')
+        self.hist_canvas.axes[1].set_title('Зеленый канал', fontsize=title_font)
+        self.hist_canvas.axes[1].set_xlabel('Яркость', fontsize=label_font)
+        self.hist_canvas.axes[1].set_ylabel('Частота', fontsize=label_font)
+
+        counts_b, bins_b, patches_b = self.hist_canvas.axes[2].hist(b, bins=256, range=(0, 255), alpha=0.7, color='blue')
+        self.hist_canvas.axes[2].set_title('Синий канал', fontsize=title_font)
+        self.hist_canvas.axes[2].set_xlabel('Яркость', fontsize=label_font)
+        self.hist_canvas.axes[2].set_ylabel('Частота', fontsize=label_font)
+
+        counts_y, bins_y, patches_y = self.hist_canvas.axes[3].hist(brightness, bins=256, range=(0, 255), alpha=0.7, color='gray')
+        self.hist_canvas.axes[3].set_title('Яркость', fontsize=title_font)
+        self.hist_canvas.axes[3].set_xlabel('Яркость', fontsize=label_font)
+        self.hist_canvas.axes[3].set_ylabel('Частота', fontsize=label_font)
+
+        # Общие настройки: размер тиков и читаемость оси Y (разделитель тысяч)
+        for ax in self.hist_canvas.axes:
+            ax.tick_params(axis='both', which='major', labelsize=tick_font)
+            ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, p: format(int(x), ',')))
+            # чуть отодвинем подпись Y чтобы не цеплялась за левую рамку
+            ax.yaxis.labelpad = 6
+
+        # Сохраняем ссылки на столбцы гистограмм для последующего обновления
+        self.hist_bars_r = patches_r
+        self.hist_bars_g = patches_g
+        self.hist_bars_b = patches_b
+        self.hist_bars_y = patches_y
         self.hist_initialized = True
-        
-        # Увеличиваем пространство вокруг графика
-        self.hist_canvas.fig.tight_layout(pad=2.0)
+
         self.hist_canvas.draw()
-    
+
+    # Обновление данных гистограмм без изменения масштаба и осей
     def update_histogram(self):
-        """Обновляет данные гистограммы без изменения масштаба и осей"""
         if self.current_array is None or not self.hist_initialized:
             return
             
-        # Вычисляем яркость по формуле из лекции
-        r, g, b = self.current_array[:,:,0], self.current_array[:,:,1], self.current_array[:,:,2]
-        brightness = 0.299 * r + 0.5876 * g + 0.114 * b
+        # Получаем каналы изображения
+        r = self.current_array[:,:,0].flatten()
+        g = self.current_array[:,:,1].flatten()
+        b = self.current_array[:,:,2].flatten()
+        
+        # Вычисляем яркость текущего изображения
+        brightness = 0.299 * self.current_array[:,:,0] + 0.5876 * self.current_array[:,:,1] + 0.114 * self.current_array[:,:,2]
         brightness = brightness.flatten()
         
-        # Вычисляем новую гистограмму
-        counts, bins = np.histogram(brightness, bins=256, range=(0, 255))
+        # Вычисляем новое распределение для каждого канала и яркости
+        counts_r, bins_r = np.histogram(r, bins=256, range=(0, 255))
+        counts_g, bins_g = np.histogram(g, bins=256, range=(0, 255))
+        counts_b, bins_b = np.histogram(b, bins=256, range=(0, 255))
+        counts_y, bins_y = np.histogram(brightness, bins=256, range=(0, 255))
         
-        # Обновляем высоту столбцов гистограммы
-        for i, patch in enumerate(self.hist_bars):
-            patch.set_height(counts[i])
+        # Обновляем высоту столбцов гистограмм
+        for i, patch in enumerate(self.hist_bars_r):
+            patch.set_height(counts_r[i])
+        for i, patch in enumerate(self.hist_bars_g):
+            patch.set_height(counts_g[i])
+        for i, patch in enumerate(self.hist_bars_b):
+            patch.set_height(counts_b[i])
+        for i, patch in enumerate(self.hist_bars_y):
+            patch.set_height(counts_y[i])
         
-        # Перерисовываем гистограмму
+        # Перерисовываем гистограммы
         self.hist_canvas.draw()
     
+    # преобразование numpy array в QImage
     def array_to_qimage(self, array):
-        """Быстрое преобразование numpy array в QImage"""
         height, width, channels = array.shape
         bytes_per_line = channels * width
         return QImage(array.data, width, height, bytes_per_line, QImage.Format_RGB888)
     
+    # Обновление отображения изображения и гистограмм
     def update_display(self):
-        """Обновляет отображение изображения и гистограммы"""
         if self.current_array is not None:
-            # Создаем копию для отображения (чтобы не портить оригинал)
+            # Создаем копию для отображения
             display_array = self.current_array.copy()
             
             # Масштабируем изображение для отображения
@@ -274,20 +361,21 @@ class ImageViewer(QMainWindow):
                 new_w, new_h = int(w * scale), int(h * scale)
                 display_array = cv2.resize(display_array, (new_w, new_h), interpolation=cv2.INTER_AREA)
             
+            # Преобразуем numpy array в QImage и затем в QPixmap для отображения
             qimage = self.array_to_qimage(display_array)
             pixmap = QPixmap.fromImage(qimage)
             
-            # Если есть выделение, рисуем его поверх изображения
+            # Если есть активное выделение, рисуем его поверх изображения
             if self.selection_active and self.selection_rect:
                 # Создаем painter для рисования поверх pixmap
                 painter = QPainter(pixmap)
                 
                 # Настраиваем перо для тонкой пунктирной линии
-                pen = QPen(Qt.red)
+                pen = QPen(Qt.black)
                 pen.setWidth(1)
                 pen.setStyle(Qt.DashLine)
                 painter.setPen(pen)
-                painter.setBrush(Qt.NoBrush)
+                painter.setBrush(Qt.NoBrush)  # Прозрачная заливка
                 
                 # Масштабируем координаты выделения к отображаемому размеру
                 scale_x = pixmap.width() / self.current_array.shape[1]
@@ -302,59 +390,66 @@ class ImageViewer(QMainWindow):
                 painter.drawRect(x, y, w, h)
                 painter.end()
             
+            # Устанавливаем pixmap в метку для отображения
             self.image_label.setPixmap(pixmap)
             
+            # Обновляем гистограммы
             if self.hist_initialized:
                 self.update_histogram()
             else:
                 self.init_histogram()
     
+    # Обработчик нажатия на слайдер (ничего не делаем)
     def slider_pressed(self):
-        """Слайдер нажат - ничего не делаем"""
         pass
     
+    # Обработчик отпускания слайдера - применяем преобразования
     def slider_released(self):
-        """Слайдер отпущен - применяем преобразования"""
         self.brightness_value = self.brightness_slider.value()
         self.contrast_value = self.contrast_slider.value()
+        # Обновляем метки значений
         self.brightness_value_label.setText(str(self.brightness_value))
         self.contrast_value_label.setText(str(self.contrast_value))
+        # Применяем преобразования
         self.apply_all_transforms()
     
+    # Обработчик изменения порога бинаризации
     def binary_threshold_changed(self, value):
-        """Обработчик изменения порога бинаризации"""
         self.binary_threshold = value
         self.binary_threshold_label.setText(str(value))
     
+    # Применение преобразований яркости и контрастности к изображению
     def apply_all_transforms(self):
-        """Применить все активные преобразования к изображению"""
         if self.original_array is None:
             return
         
-        # Определяем область для обработки
+        # Определяем область для обработки (всё изображение или выделенная область)
         if self.selection_active and self.selection_rect:
             x, y, w, h = self.selection_rect
+            # Выделяем область
             roi = self.original_array[y:y+h, x:x+w].copy().astype(np.float32)
             
-            # Применяем контрастность
+            # Применяем контрастность по формуле из лекции
             if self.contrast_value != 100:
                 contrast = self.contrast_value / 100.0
+                # Вычисляем средние значения для каждого канала
                 mean_r = np.mean(roi[:,:,0])
                 mean_g = np.mean(roi[:,:,1])
                 mean_b = np.mean(roi[:,:,2])
                 
+                # Применяем преобразование контрастности
                 roi[:,:,0] = contrast * (roi[:,:,0] - mean_r) + mean_r
                 roi[:,:,1] = contrast * (roi[:,:,1] - mean_g) + mean_g
                 roi[:,:,2] = contrast * (roi[:,:,2] - mean_b) + mean_b
             
-            # Применяем яркость
+            # Применяем яркость (простое сложение/вычитание)
             if self.brightness_value != 0:
                 roi += self.brightness_value
             
-            # Обрезаем значения и конвертируем обратно
+            # Обрезаем значения до допустимого диапазона [0, 255]
             roi = np.clip(roi, 0, 255).astype(np.uint8)
             
-            # Обновляем только выделенную область
+            # Обновляем только выделенную область в текущем изображении
             self.current_array = self.original_array.copy()
             self.current_array[y:y+h, x:x+w] = roi
         else:
@@ -376,13 +471,14 @@ class ImageViewer(QMainWindow):
             if self.brightness_value != 0:
                 self.current_array += self.brightness_value
             
-            # Обрезаем значения и конвертируем обратно
+            # Обрезаем значения и конвертируем обратно в uint8
             self.current_array = np.clip(self.current_array, 0, 255).astype(np.uint8)
         
+        # Обновляем отображение
         self.update_display()
     
+    # Применение бинаризации к изображению
     def apply_binarization(self):
-        """Применяет бинаризацию"""
         if self.current_array is None:
             return
         
@@ -393,17 +489,19 @@ class ImageViewer(QMainWindow):
             x, y, w, h = self.selection_rect
             roi = self.current_array[y:y+h, x:x+w].copy()
             
-            # Преобразуем в grayscale
+            # Преобразуем в grayscale для бинаризации
             gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
             
+            # Применяем выбранный метод бинаризации
             if method == 'Фиксированный порог':
                 threshold = self.binary_threshold_slider.value()
                 _, binary = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
             elif method == 'Адаптивный порог':
-                # Быстрая адаптивная бинаризация
+                # Адаптивная бинаризация с гауссовским усреднением
                 binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
                                              cv2.THRESH_BINARY, 11, 2)
             else:  # Метод Оцу
+                # Автоматический выбор порога по методу Оцу
                 _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
             # Преобразуем обратно в RGB
@@ -422,7 +520,6 @@ class ImageViewer(QMainWindow):
                 threshold = self.binary_threshold_slider.value()
                 _, binary = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
             elif method == 'Адаптивный порог':
-                # Быстрая адаптивная бинаризация
                 binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
                                              cv2.THRESH_BINARY, 11, 2)
             else:  # Метод Оцу
@@ -433,8 +530,8 @@ class ImageViewer(QMainWindow):
         
         self.update_display()
     
+    # Преобразование изображения в оттенки серого
     def apply_grayscale(self):
-        """Применяет оттенки серого"""
         if self.current_array is None:
             return
         
@@ -443,6 +540,7 @@ class ImageViewer(QMainWindow):
             x, y, w, h = self.selection_rect
             roi = self.current_array[y:y+h, x:x+w].copy()
             
+            # Преобразуем в grayscale и обратно в RGB 
             gray = cv2.cvtColor(roi, cv2.COLOR_RGB2GRAY)
             gray_rgb = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
             
@@ -455,30 +553,62 @@ class ImageViewer(QMainWindow):
         
         self.update_display()
     
+    # Преобразование изображения в негатив
     def apply_negative(self):
-        """Применяет негатив"""
         if self.current_array is None:
             return
         
         # Определяем область для обработки
         if self.selection_active and self.selection_rect:
             x, y, w, h = self.selection_rect
+            # Инвертируем цвета в выделенной области
             self.current_array[y:y+h, x:x+w] = 255 - self.current_array[y:y+h, x:x+w]
         else:
-            # Обрабатываем все изображение
+            # Инвертируем цвета во всем изображении
             self.current_array = 255 - self.current_array
         
         self.update_display()
     
+    # Выравнивание гистограмм (преобразование гистограмм)
+    def apply_histogram_equalization(self):
+        if self.current_array is None:
+            return
+        
+        # Определяем область для обработки
+        if self.selection_active and self.selection_rect:
+            x, y, w, h = self.selection_rect
+            roi = self.current_array[y:y+h, x:x+w].copy()
+            
+            # Применяем выравнивание гистограммы к каждому каналу
+            # Преобразуем в YUV для работы с яркостью
+            yuv = cv2.cvtColor(roi, cv2.COLOR_RGB2YUV)
+            # Выравниваем гистограмму яркостного канала
+            yuv[:,:,0] = cv2.equalizeHist(yuv[:,:,0])
+            # Преобразуем обратно в RGB
+            equalized_roi = cv2.cvtColor(yuv, cv2.COLOR_YUV2RGB)
+            
+            # Обновляем только выделенную область
+            self.current_array[y:y+h, x:x+w] = equalized_roi
+        else:
+            # Обрабатываем все изображение
+            # Преобразуем в YUV для работы с яркостью
+            yuv = cv2.cvtColor(self.current_array, cv2.COLOR_RGB2YUV)
+            # Выравниваем гистограмму яркостного канала
+            yuv[:,:,0] = cv2.equalizeHist(yuv[:,:,0])
+            # Преобразуем обратно в RGB
+            self.current_array = cv2.cvtColor(yuv, cv2.COLOR_YUV2RGB)
+        
+        self.update_display()
+    
+    # Сброс изображения к оригинальному состоянию
     def reset_image(self):
-        """Сбрасывает изображение к оригиналу"""
         if self.original_array is not None:
             self.current_array = self.original_array.copy()
             self.update_display()
             self.reset_sliders()
     
+    # Сброс слайдеров к начальным значениям
     def reset_sliders(self):
-        """Сбрасывает слайдеры"""
         self.brightness_slider.setValue(0)
         self.contrast_slider.setValue(100)
         self.brightness_value = 0
@@ -486,8 +616,8 @@ class ImageViewer(QMainWindow):
         self.brightness_value_label.setText('0')
         self.contrast_value_label.setText('100')
     
+    # Включение/выключение режима выделения области
     def toggle_selection(self):
-        """Включает/выключает режим выделения"""
         self.selection_active = not self.selection_active
         if self.selection_active:
             self.statusBar().showMessage('Режим выделения: рисуйте прямоугольник на изображении')
@@ -495,15 +625,15 @@ class ImageViewer(QMainWindow):
             self.statusBar().showMessage('')
             self.clear_selection()
     
+    # Очистка выделенной области
     def clear_selection(self):
-        """Очищает выделение"""
         self.selection_rect = None
         self.selection_active = False
         self.update_display()
         self.statusBar().showMessage('')
     
+    # Обработчик нажатия кнопки мыши на изображении (начало выделения)
     def image_mouse_press(self, event):
-        """Обработчик нажатия мыши на изображении"""
         if self.selection_active and self.current_array is not None:
             pos = event.pos()
             label_size = self.image_label.size()
@@ -517,15 +647,16 @@ class ImageViewer(QMainWindow):
             if (offset_x <= pos.x() < offset_x + pixmap_size.width() and
                 offset_y <= pos.y() < offset_y + pixmap_size.height()):
                 
-                # Пересчитываем координаты в систему изображения
+                # Пересчитываем координаты в систему изображения (с учетом масштабирования)
                 img_x = int((pos.x() - offset_x) * self.current_array.shape[1] / pixmap_size.width())
                 img_y = int((pos.y() - offset_y) * self.current_array.shape[0] / pixmap_size.height())
                 
+                # Сохраняем начальную точку выделения
                 self.selection_start = (img_x, img_y)
                 self.selection_rect = (img_x, img_y, 0, 0)
     
+    # Обработчик движения мыши при выделении области
     def image_mouse_move(self, event):
-        """Обработчик движения мыши на изображении"""
         if (self.selection_active and self.selection_start is not None and 
             self.current_array is not None):
             
@@ -546,40 +677,60 @@ class ImageViewer(QMainWindow):
                 img_y = int((pos.y() - offset_y) * self.current_array.shape[0] / pixmap_size.height())
                 
                 start_x, start_y = self.selection_start
-                width = img_x - start_x
-                height = img_y - start_y
+                
+                # Вычисляем координаты прямоугольника с учетом направления движения
+                x1 = min(start_x, img_x)
+                y1 = min(start_y, img_y)
+                x2 = max(start_x, img_x)
+                y2 = max(start_y, img_y)
                 
                 # Ограничиваем выделение размерами изображения
-                width = max(0, min(width, self.current_array.shape[1] - start_x))
-                height = max(0, min(height, self.current_array.shape[0] - start_y))
+                x1 = max(0, x1)
+                y1 = max(0, y1)
+                x2 = min(self.current_array.shape[1], x2)
+                y2 = min(self.current_array.shape[0], y2)
                 
-                self.selection_rect = (start_x, start_y, width, height)
+                width = x2 - x1
+                height = y2 - y1
+                
+                # Обновляем координаты выделения
+                self.selection_rect = (x1, y1, width, height)
                 self.update_display()
     
+    # Обработчик отпускания кнопки мыши (окончание выделения)
     def image_mouse_release(self, event):
-        """Обработчик отпускания мыши на изображении"""
         if self.selection_active and self.selection_start is not None:
             self.selection_start = None
             if self.selection_rect[2] > 0 and self.selection_rect[3] > 0:
+                # Показываем информацию о размере выделенной области
                 self.statusBar().showMessage(f'Выделена область: {self.selection_rect[2]}x{self.selection_rect[3]} пикселей')
             else:
                 self.clear_selection()
     
+    # Обработчик изменения размера окна - просто перерисовываем изображение
     def resizeEvent(self, event):
         self.update_display()
         super().resizeEvent(event)
 
 
+# Класс для встраивания matplotlib графиков в PyQt приложение
 class MplCanvas(FigureCanvas):
-    def __init__(self, parent=None, width=5, height=4, dpi=100):
-        self.fig = Figure(figsize=(width, height), dpi=dpi)
-        self.axes = self.fig.add_subplot(111)
+    def __init__(self, parent=None, width=6, height=4, dpi=100):
+        # Включаем constrained_layout, чтобы matplotlib автоматически распределял места
+        self.fig = Figure(figsize=(width, height), dpi=dpi, constrained_layout=True)
+        # Создаем 4 подграфика для отображения 4 гистограмм
+        self.axes = [
+            self.fig.add_subplot(2, 2, 1),  # Красный канал
+            self.fig.add_subplot(2, 2, 2),  # Зеленый канал
+            self.fig.add_subplot(2, 2, 3),  # Синий канал
+            self.fig.add_subplot(2, 2, 4)   # Яркость
+        ]
         super().__init__(self.fig)
         self.setParent(parent)
 
 
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    viewer = ImageViewer()
-    viewer.show()
-    sys.exit(app.exec_())
+
+app = QApplication(sys.argv)
+viewer = ImageViewer()
+viewer.show()
+sys.exit(app.exec_())
