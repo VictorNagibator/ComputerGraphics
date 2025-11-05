@@ -25,8 +25,8 @@ class ImageViewer(QMainWindow):
         self.selection_active = False # Флаг активного выделения
         
         # Параметры преобразований изображения
-        self.brightness_value = 0 # Значение яркости (-100 до 100)
-        self.contrast_value = 100 # Значение контрастности (50 до 200)
+        self.brightness_value = 0 # Значение яркости
+        self.contrast_value = 100 # Значение контрастности
         
         # Переменные для работы с гистограммой
         self.hist_initialized = False # Флаг инициализации гистограммы
@@ -123,9 +123,9 @@ class ImageViewer(QMainWindow):
         
         # Слайдер для регулировки контрастности
         contrast_layout = QHBoxLayout()
-        contrast_layout.addWidget(QLabel('Контрастность (* 10^2):'))
+        contrast_layout.addWidget(QLabel('Контрастность (%):'))
         self.contrast_slider = QSlider(Qt.Horizontal)
-        self.contrast_slider.setRange(0, 200)
+        self.contrast_slider.setRange(10, 200)
         self.contrast_slider.setValue(100)
         self.contrast_slider.sliderPressed.connect(self.slider_pressed)
         self.contrast_slider.sliderReleased.connect(self.slider_released)
