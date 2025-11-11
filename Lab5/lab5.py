@@ -125,7 +125,7 @@ class ImageViewer(QMainWindow):
         contrast_layout = QHBoxLayout()
         contrast_layout.addWidget(QLabel('Контрастность (%):'))
         self.contrast_slider = QSlider(Qt.Horizontal)
-        self.contrast_slider.setRange(10, 200)
+        self.contrast_slider.setRange(10, 10000)
         self.contrast_slider.setValue(100)
         self.contrast_slider.sliderPressed.connect(self.slider_pressed)
         self.contrast_slider.sliderReleased.connect(self.slider_released)
@@ -272,27 +272,27 @@ class ImageViewer(QMainWindow):
         for ax in self.hist_canvas.axes:
             ax.clear()
 
-        counts_r, bins_r, patches_r = self.hist_canvas.axes[0].hist(r, bins=256, range=(0, 255), alpha=0.7, color='red')
+        counts_r, bins_r, patches_r = self.hist_canvas.axes[0].hist(r, bins=256, range=(0, 256), alpha=0.7, color='red')
         self.hist_canvas.axes[0].set_title('Красный канал', fontsize=title_font)
         self.hist_canvas.axes[0].set_xlabel('Яркость', fontsize=label_font)
         self.hist_canvas.axes[0].set_ylabel('Частота', fontsize=label_font)
 
-        counts_g, bins_g, patches_g = self.hist_canvas.axes[1].hist(g, bins=256, range=(0, 255), alpha=0.7, color='green')
+        counts_g, bins_g, patches_g = self.hist_canvas.axes[1].hist(g, bins=256, range=(0, 256), alpha=0.7, color='green')
         self.hist_canvas.axes[1].set_title('Зеленый канал', fontsize=title_font)
         self.hist_canvas.axes[1].set_xlabel('Яркость', fontsize=label_font)
         self.hist_canvas.axes[1].set_ylabel('Частота', fontsize=label_font)
 
-        counts_b, bins_b, patches_b = self.hist_canvas.axes[2].hist(b, bins=256, range=(0, 255), alpha=0.7, color='blue')
+        counts_b, bins_b, patches_b = self.hist_canvas.axes[2].hist(b, bins=256, range=(0, 256), alpha=0.7, color='blue')
         self.hist_canvas.axes[2].set_title('Синий канал', fontsize=title_font)
         self.hist_canvas.axes[2].set_xlabel('Яркость', fontsize=label_font)
         self.hist_canvas.axes[2].set_ylabel('Частота', fontsize=label_font)
 
-        counts_y, bins_y, patches_y = self.hist_canvas.axes[3].hist(brightness, bins=256, range=(0, 255), alpha=0.7, color='gray')
+        counts_y, bins_y, patches_y = self.hist_canvas.axes[3].hist(brightness, bins=256, range=(0, 256), alpha=0.7, color='gray')
         self.hist_canvas.axes[3].set_title('Яркость', fontsize=title_font)
         self.hist_canvas.axes[3].set_xlabel('Яркость', fontsize=label_font)
         self.hist_canvas.axes[3].set_ylabel('Частота', fontsize=label_font)
 
-        # Общие настройки: размер тиков и читаемость оси Y (разделитель тысяч)
+        # Общие настройки: размер тиков и читаемость оси Y
         for ax in self.hist_canvas.axes:
             ax.tick_params(axis='both', which='major', labelsize=tick_font)
             ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, p: format(int(x), ',')))
@@ -322,24 +322,35 @@ class ImageViewer(QMainWindow):
         brightness = 0.299 * self.current_array[:,:,0] + 0.5876 * self.current_array[:,:,1] + 0.114 * self.current_array[:,:,2]
         brightness = brightness.flatten()
         
-        # Вычисляем новое распределение для каждого канала и яркости
-        counts_r, bins_r = np.histogram(r, bins=256, range=(0, 255))
-        counts_g, bins_g = np.histogram(g, bins=256, range=(0, 255))
-        counts_b, bins_b = np.histogram(b, bins=256, range=(0, 255))
-        counts_y, bins_y = np.histogram(brightness, bins=256, range=(0, 255))
+        counts_r, bins_r = np.histogram(r, bins=256, range=(0, 256))
+        counts_g, bins_g = np.histogram(g, bins=256, range=(0, 256))
+        counts_b, bins_b = np.histogram(b, bins=256, range=(0, 256))
+        counts_y, bins_y = np.histogram(brightness, bins=256, range=(0, 256))
         
-        # Обновляем высоту столбцов гистограмм
-        for i, patch in enumerate(self.hist_bars_r):
-            patch.set_height(counts_r[i])
-        for i, patch in enumerate(self.hist_bars_g):
-            patch.set_height(counts_g[i])
-        for i, patch in enumerate(self.hist_bars_b):
-            patch.set_height(counts_b[i])
-        for i, patch in enumerate(self.hist_bars_y):
-            patch.set_height(counts_y[i])
+        for i, (count, patch) in enumerate(zip(counts_r, self.hist_bars_r)):
+            patch.set_height(count)
+            # Также обновляем данные для корректного отображения при перерисовке
+            patch.set_xy((bins_r[i], 0))
+        
+        for i, (count, patch) in enumerate(zip(counts_g, self.hist_bars_g)):
+            patch.set_height(count)
+            patch.set_xy((bins_g[i], 0))
+        
+        for i, (count, patch) in enumerate(zip(counts_b, self.hist_bars_b)):
+            patch.set_height(count)
+            patch.set_xy((bins_b[i], 0))
+        
+        for i, (count, patch) in enumerate(zip(counts_y, self.hist_bars_y)):
+            patch.set_height(count)
+            patch.set_xy((bins_y[i], 0))
+        
+        # Автоматически масштабируем оси Y для лучшего отображения
+        for ax in self.hist_canvas.axes:
+            ax.relim()
+            ax.autoscale_view()
         
         # Перерисовываем гистограммы
-        self.hist_canvas.draw()
+        self.hist_canvas.draw_idle()  # Используем draw_idle для плавного обновления
     
     # преобразование numpy array в QImage
     def array_to_qimage(self, array):
