@@ -350,7 +350,7 @@ class ImageViewer(QMainWindow):
             ax.autoscale_view()
         
         # Перерисовываем гистограммы
-        self.hist_canvas.draw_idle()  # Используем draw_idle для плавного обновления
+        self.hist_canvas.draw_idle()
     
     # преобразование numpy array в QImage
     def array_to_qimage(self, array):
