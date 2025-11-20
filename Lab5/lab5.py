@@ -125,7 +125,7 @@ class ImageViewer(QMainWindow):
         contrast_layout = QHBoxLayout()
         contrast_layout.addWidget(QLabel('Контрастность (%):'))
         self.contrast_slider = QSlider(Qt.Horizontal)
-        self.contrast_slider.setRange(10, 10000)
+        self.contrast_slider.setRange(0, 10000)
         self.contrast_slider.setValue(100)
         self.contrast_slider.sliderPressed.connect(self.slider_pressed)
         self.contrast_slider.sliderReleased.connect(self.slider_released)
@@ -329,7 +329,6 @@ class ImageViewer(QMainWindow):
         
         for i, (count, patch) in enumerate(zip(counts_r, self.hist_bars_r)):
             patch.set_height(count)
-            # Также обновляем данные для корректного отображения при перерисовке
             patch.set_xy((bins_r[i], 0))
         
         for i, (count, patch) in enumerate(zip(counts_g, self.hist_bars_g)):
