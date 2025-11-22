@@ -1,12 +1,12 @@
 import sys
 import numpy as np
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QPushButton, QLabel, QFileDialog, QSlider, QComboBox, QGroupBox,
+                             QPushButton, QLabel, QFileDialog, QGroupBox,
                              QMessageBox, QLineEdit, QRadioButton, QButtonGroup, QScrollArea)
-from PyQt5.QtGui import QPixmap, QImage, QPainter, QPen
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtCore import Qt
 import cv2
-import time
+from numba import njit, prange
 
 class ImageViewer(QMainWindow):
     def __init__(self):
@@ -18,7 +18,7 @@ class ImageViewer(QMainWindow):
         self.current_scale = 1.0
         
     def initUI(self):
-        self.setWindowTitle('Лабораторная работа 7 - Масштабирование изображений')
+        self.setWindowTitle('Лабораторная работа 7')
         self.setGeometry(100, 100, 1400, 800)
         
         central_widget = QWidget()
@@ -153,13 +153,13 @@ class ImageViewer(QMainWindow):
         
         main_layout.addLayout(control_layout)
     
+    # применение масштабирования с предустановленным коэффициентом
     def apply_quick_scale(self, scale_factor):
-        """Быстрое применение масштабирования с предустановленным коэффициентом"""
         self.scale_input.setText(str(scale_factor))
         self.apply_scaling()
     
+    # Применение масштабирования
     def apply_scaling(self):
-        """Применение масштабирования"""
         if self.original_array is None:
             QMessageBox.warning(self, "Ошибка", "Сначала загрузите изображение")
             return
@@ -173,10 +173,10 @@ class ImageViewer(QMainWindow):
             return
         
         if self.nearest_rb.isChecked():
-            scaled_image = self.optimized_nearest_neighbor(self.original_array, scale_factor)
+            scaled_image = self.nearest_neighbor(self.original_array, scale_factor)
             method_name = "ближайшего соседа"
         else:
-            scaled_image = self.bicubic_interpolation_wikipedia(self.original_array, scale_factor)
+            scaled_image = self.bicubic_interpolation(self.original_array, scale_factor)
             method_name = "бикубической интерполяции"
         
         self.current_array = scaled_image
@@ -185,8 +185,8 @@ class ImageViewer(QMainWindow):
         
         self.update_display()
     
-    def optimized_nearest_neighbor(self, image, scale_factor):
-        """Оптимизированный метод ближайшего соседа"""
+    # Оптимизированный метод ближайшего соседа (векторизация)
+    def nearest_neighbor(self, image, scale_factor):
         h, w = image.shape[:2]
         new_w = int(w * scale_factor)
         new_h = int(h * scale_factor)
@@ -204,91 +204,25 @@ class ImageViewer(QMainWindow):
         
         return scaled
     
-    def bicubic_interpolation_wikipedia(self, image, scale_factor):
-        """Бикубическая интерполяция по формулам из Википедии"""
+    # Бикубическая интерполяция
+    def bicubic_interpolation(self, image, scale_factor):
         h, w = image.shape[:2]
         new_w = int(w * scale_factor)
         new_h = int(h * scale_factor)
         
-        # Создаем новое изображение
-        scaled = np.zeros((new_h, new_w, 3), dtype=np.uint8)
-        
         # Преобразуем в float для точных вычислений
         image_float = image.astype(np.float32)
         
-        for i in range(new_h):
-            for j in range(new_w):
-                # Вычисляем координаты в исходном изображении
-                x = j / scale_factor
-                y = i / scale_factor
-                
-                # Находим базовые координаты
-                x0 = int(x)
-                y0 = int(y)
-                
-                # Вычисляем дробные части
-                dx = x - x0
-                dy = y - y0
-                
-                # Получаем значения 16 соседних пикселей
-                pixels = self.get_surrounding_pixels(image_float, x0, y0, w, h)
-                
-                # Вычисляем коэффициенты по формулам из Википедии
-                # и применяем их к соответствующим пикселям
-                pixel_value = (
-                    0.25 * (dx-1)*(dx-2)*(dx+1) * (dy-1)*(dy-2)*(dy+1) * pixels[1, 1] +  
-                    -0.25 * dx*(dx+1)*(dx-2) * (dy-1)*(dy-2)*(dy+1) * pixels[1, 2] +     
-                    -0.25 * dy*(dx-1)*(dx-2)*(dx+1) * (dy+1)*(dy-2) * pixels[2, 1] +    
-                    0.25 * dx*dy*(dx+1)*(dx-2) * (dy+1)*(dy-2) * pixels[2, 2] +         
-                    -1/12 * dx*(dx-1)*(dx-2) * (dy-1)*(dy-2)*(dy+1) * pixels[1, 0] +     
-                    -1/12 * dy*(dx-1)*(dx-2)*(dx+1) * (dy-1)*(dy-2) * pixels[0, 1] +     
-                    1/12 * dx*dy*(dx-1)*(dx-2) * (dy+1)*(dy-2) * pixels[2, 0] +         
-                    1/12 * dx*dy*(dx+1)*(dx-2) * (dy-1)*(dy-2) * pixels[0, 2] +         
-                    1/12 * dx*(dx-1)*(dx+1) * (dy-1)*(dy-2)*(dy+1) * pixels[1, 3] +     
-                    1/12 * dy*(dx-1)*(dx-2)*(dx+1) * (dy-1)*(dy+1) * pixels[3, 1] +      
-                    1/36 * dx*dy*(dx-1)*(dx-2) * (dy-1)*(dy-2) * pixels[0, 0] +          
-                    -1/12 * dx*dy*(dx-1)*(dx+1) * (dy+1)*(dy-2) * pixels[2, 3] +         
-                    -1/12 * dx*dy*(dx+1)*(dx-2) * (dy-1)*(dy+1) * pixels[3, 2] +         
-                    -1/36 * dx*dy*(dx-1)*(dx+1) * (dy-1)*(dy-2) * pixels[0, 3] +        
-                    -1/36 * dx*dy*(dx-1)*(dx-2) * (dy+1)*(dy-1) * pixels[3, 0] +         
-                    1/36 * dx*dy*(dx-1)*(dx+1) * (dy-1)*(dy+1) * pixels[3, 3]            
-                )
-                
-                # Обрезаем значения и преобразуем обратно в uint8
-                pixel_value = np.clip(pixel_value, 0, 255)
-                scaled[i, j] = pixel_value.astype(np.uint8)
+        # Вызываем JIT-компилируемую функцию
+        scaled_float = _bicubic_numba_compiled(image_float, scale_factor, new_h, new_w, h, w)
+        
+        # Обрезаем значения и преобразуем обратно в uint8
+        scaled = np.clip(scaled_float, 0, 255).astype(np.uint8)
         
         return scaled
     
-    def get_surrounding_pixels(self, image, x, y, w, h):
-        """Получаем 16 окружающих пикселей для бикубической интерполяции"""
-        pixels = np.zeros((4, 4, 3), dtype=np.float32)
-        
-        for i in range(-1, 3):
-            for j in range(-1, 3):
-                # Координаты в исходном изображении
-                src_x = x + j
-                src_y = y + i
-                
-                # Обработка границ - используем отражение
-                src_x = self.reflect_border(src_x, w)
-                src_y = self.reflect_border(src_y, h)
-                
-                pixels[i+1, j+1] = image[src_y, src_x]
-        
-        return pixels
-    
-    def reflect_border(self, coord, size):
-        """Отражает координаты за границами изображения"""
-        if coord < 0:
-            return -coord - 1
-        elif coord >= size:
-            return 2 * size - coord - 1
-        else:
-            return coord
-    
+    # Создание тестового изображения с геометрическими фигурами
     def create_geometric_image(self):
-        """Создание тестового изображения с геометрическими фигурами"""
         # Создаем изображение меньшего размера для быстрой демонстрации
         width, height = 200, 200
         image = np.ones((height, width, 3), dtype=np.uint8) * 255
@@ -304,11 +238,7 @@ class ImageViewer(QMainWindow):
         # Рисуем линии
         cv2.line(image, (25, 175), (175, 175), (0, 0, 0), 2)
         cv2.line(image, (100, 25), (100, 175), (0, 0, 0), 2)
-        
-        # Рисуем кольца
-        for r in range(10, 40, 8):
-            cv2.circle(image, (150, 150), r, (128, 0, 128), 1)
-        
+           
         self.original_array = image
         self.current_array = image.copy()
         self.current_scale = 1.0
@@ -316,8 +246,8 @@ class ImageViewer(QMainWindow):
         self.scale_label.setText("1.0x")
         self.update_display()
     
+    # Загрузка изображения из файла
     def load_image(self):
-        """Загрузка изображения из файла"""
         file_name, _ = QFileDialog.getOpenFileName(
             self, "Выберите изображение", "", 
             "Image Files (*.png *.jpg *.jpeg)")
@@ -338,8 +268,8 @@ class ImageViewer(QMainWindow):
             
             self.update_display()
     
+    # Обновление отображения изображений
     def update_display(self):
-        """Обновление отображения изображений"""
         if self.original_array is not None:
             # Отображаем оригинал
             orig_qimage = self.array_to_qimage(self.original_array)
@@ -354,20 +284,88 @@ class ImageViewer(QMainWindow):
                 self.result_label.setPixmap(result_pixmap)
                 self.result_label.resize(result_pixmap.size())
     
+    # Преобразование numpy array в QImage
     def array_to_qimage(self, array):
-        """Преобразование numpy array в QImage"""
         height, width, channels = array.shape
         bytes_per_line = channels * width
         return QImage(array.data, width, height, bytes_per_line, QImage.Format_RGB888)
     
+    # Сброс к оригинальному изображению
     def reset_image(self):
-        """Сброс к оригинальному изображению"""
         if self.original_array is not None:
             self.current_array = self.original_array.copy()
             self.current_scale = 1.0
             self.scale_input.setText("1.0")
             self.scale_label.setText("1.0x")
             self.update_display()
+
+
+# JIT-компилируемая функция для бикубической интерполяции (распаралеллена)
+@njit(parallel=True, fastmath=True)
+def _bicubic_numba_compiled(image_float, scale_factor, new_h, new_w, h, w):
+    scaled = np.zeros((new_h, new_w, 3), dtype=np.float32)
+    
+    for i in prange(new_h):
+        for j in range(new_w):
+            # Вычисляем координаты в исходном изображении
+            x = j / scale_factor
+            y = i / scale_factor
+            
+            # Находим базовые координаты
+            x0 = int(x)
+            y0 = int(y)
+            
+            # Вычисляем дробные части
+            dx = x - x0
+            dy = y - y0
+            
+            # Получаем значения 16 соседних пикселей
+            pixels = np.zeros((4, 4, 3), dtype=np.float32)
+            for m in range(-1, 3):
+                for n in range(-1, 3):
+                    # Координаты в исходном изображении
+                    src_x = x0 + n
+                    src_y = y0 + m
+                    
+                    # Обработка границ - используем отражение
+                    if src_x < 0:
+                        src_x = -src_x - 1
+                    elif src_x >= w:
+                        src_x = 2 * w - src_x - 1
+                    
+                    if src_y < 0:
+                        src_y = -src_y - 1
+                    elif src_y >= h:
+                        src_y = 2 * h - src_y - 1
+                    
+                    pixels[m+1, n+1] = image_float[src_y, src_x]
+            
+            # Вычисляем коэффициенты по формулам
+            # и применяем их к соответствующим пикселям
+            for channel in range(3):
+                pixel_value = (
+                    0.25 * (dx-1)*(dx-2)*(dx+1) * (dy-1)*(dy-2)*(dy+1) * pixels[1, 1, channel] +  
+                    -0.25 * dx*(dx+1)*(dx-2) * (dy-1)*(dy-2)*(dy+1) * pixels[1, 2, channel] +     
+                    -0.25 * dy*(dx-1)*(dx-2)*(dx+1) * (dy+1)*(dy-2) * pixels[2, 1, channel] +    
+                    0.25 * dx*dy*(dx+1)*(dx-2) * (dy+1)*(dy-2) * pixels[2, 2, channel] +         
+                    -1/12 * dx*(dx-1)*(dx-2) * (dy-1)*(dy-2)*(dy+1) * pixels[1, 0, channel] +     
+                    -1/12 * dy*(dx-1)*(dx-2)*(dx+1) * (dy-1)*(dy-2) * pixels[0, 1, channel] +     
+                    1/12 * dx*dy*(dx-1)*(dx-2) * (dy+1)*(dy-2) * pixels[2, 0, channel] +         
+                    1/12 * dx*dy*(dx+1)*(dx-2) * (dy-1)*(dy-2) * pixels[0, 2, channel] +         
+                    1/12 * dx*(dx-1)*(dx+1) * (dy-1)*(dy-2)*(dy+1) * pixels[1, 3, channel] +     
+                    1/12 * dy*(dx-1)*(dx-2)*(dx+1) * (dy-1)*(dy+1) * pixels[3, 1, channel] +      
+                    1/36 * dx*dy*(dx-1)*(dx-2) * (dy-1)*(dy-2) * pixels[0, 0, channel] +          
+                    -1/12 * dx*dy*(dx-1)*(dx+1) * (dy+1)*(dy-2) * pixels[2, 3, channel] +         
+                    -1/12 * dx*dy*(dx+1)*(dx-2) * (dy-1)*(dy+1) * pixels[3, 2, channel] +         
+                    -1/36 * dx*dy*(dx-1)*(dx+1) * (dy-1)*(dy-2) * pixels[0, 3, channel] +        
+                    -1/36 * dx*dy*(dx-1)*(dx-2) * (dy+1)*(dy-1) * pixels[3, 0, channel] +         
+                    1/36 * dx*dy*(dx-1)*(dx+1) * (dy-1)*(dy+1) * pixels[3, 3, channel]            
+                )
+                
+                scaled[i, j, channel] = pixel_value
+    
+    return scaled
+
 
 app = QApplication(sys.argv)
 viewer = ImageViewer()
