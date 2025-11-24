@@ -138,6 +138,14 @@ class ImageViewer(QMainWindow):
         # Параметры для эффекта волн
         waves_params_layout = QVBoxLayout()
         
+        # Добавляем выбор направления волны
+        direction_layout = QHBoxLayout()
+        direction_layout.addWidget(QLabel('Направление:'))
+        self.waves_direction = QComboBox()
+        self.waves_direction.addItems(['Горизонтальное', 'Вертикальное'])
+        direction_layout.addWidget(self.waves_direction)
+        waves_params_layout.addLayout(direction_layout)
+        
         amplitude_layout = QHBoxLayout()
         amplitude_layout.addWidget(QLabel('Амплитуда:'))
         self.waves_amplitude = QSpinBox()
@@ -291,13 +299,22 @@ class ImageViewer(QMainWindow):
         # Получаем параметры из интерфейса
         amplitude = self.waves_amplitude.value()
         frequency = self.waves_frequency.value()
+        direction = self.waves_direction.currentText()
         
-        for y in range(height):
-            for x in range(width):
-                # Создаем волнообразное искажение
-                dx = int(amplitude * math.sin(2 * math.pi * frequency * y))
-                new_x = (x + dx) % width
-                result[y, x] = self.current_array[y, new_x]
+        if direction == 'Горизонтальное':
+            # Горизонтальные волны - искажение по X в зависимости от Y
+            for y in range(height):
+                for x in range(width):
+                    dx = int(amplitude * math.sin(2 * math.pi * frequency * y))
+                    new_x = (x + dx) % width
+                    result[y, x] = self.current_array[y, new_x]
+        else:
+            # Вертикальные волны - искажение по Y в зависимости от X
+            for y in range(height):
+                for x in range(width):
+                    dy = int(amplitude * math.sin(2 * math.pi * frequency * x))
+                    new_y = (y + dy) % height
+                    result[y, x] = self.current_array[new_y, x]
         
         self.current_array = result
         self.update_display()
